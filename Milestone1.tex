@@ -1,0 +1,48 @@
+\documentclass[12pt]{amsart}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{geometry}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+\geometry{a4paper, margin=0.5in}
+\title{Milestone 1}
+\author{Sanchayan Bhowal}
+\begin{document}
+\maketitle
+% Describe the problem you propose to study:
+
+% - **Scientific or applied question.** What are you trying to answer, and why does it matter?
+\section{Problem Description}
+We aim to study classification of bitcoin transactions as either illicit or licit. This is an important problem because it can help law enforcement agencies to track and prevent illegal activities. There a couple of challenges in this problem. First, the labelling data can be noisy; for instance, some transactions may be mislabelled as illicit or licit. Secondly, the people involved in illicit transactions are more likely to carry out transactions with people who are also involved in illicit transactions. This means the data we obtain is not independent. Therefore, we need to use a model that can account for these dependencies and uncertainties in the data.
+% - **Data source.** What data exists? Include a brief description of the format, size, and any known quality issues.
+\section{Data Source}
+We will be using the Elliptic bitcoin dataset (\url{https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.datasets.EllipticBitcoinTemporalDataset.html}), which contains information about bitcoin transactions. The dataset consists of a time series graph of over 200K Bitcoin transactions (nodes), 234K directed payment flows (edges), and 166 node features. The features include the amount of bitcoins transferred, the time of the transaction, and the number of inputs and outputs.
+% - **Statistical framing.** How can probabilistic modeling help? What are the key sources of uncertainty? What would a reasonable model look like at a high level?
+\section{Statistical Framing}
+Probabilistic modeling can help us to account for the uncertainties in the data, such as the noisy labels and the dependencies between transactions. Assume $\sigma_i \in \{-1, 1\}$ is the true label of transaction $i$, and $y_i$ is the observed label. Let $-1$ denote the illicit class and $1$ denote the licit class. We can model the probability of observing $y_i$ given $\sigma_i$ as follows:
+\begin{equation}P(y_i | \sigma_i) = \begin{cases}
+        1 - \epsilon & \text{if } y_i = \sigma_i    \\
+        \epsilon     & \text{if } y_i \neq \sigma_i
+    \end{cases}\end{equation}
+where $\epsilon$ is the probability of mislabeling. We can also model the dependencies between transactions using a graphical model, where the nodes represent the transactions and the edges represent the dependencies between them. For instance, we can use a Markov Random Field (MRF) to model the joint distribution of the labels of the transactions, taking into account the dependencies between them. Let $G = (V, E)$ be the graph of transactions, where $V$ is the set of nodes (transactions) and $E$ is the set of edges (dependencies). We can model the joint distribution of the true labels $\sigma_i$ given the features $X_i$ and the graph structure as follows:
+\begin{equation}
+    P(\sigma_1, \sigma_2, \ldots, \sigma_n | X,G) \propto \prod_{(i,j) \in E} \psi_{X_i, X_j}(\sigma_i, \sigma_j)
+\end{equation}
+Here, $\psi_{X_i,X_j}$ is a symmetric potential function that measures how compatible the labels of two connected transactions are, given their features.
+
+In later milestones, we will show for binary labels, a symmetric pairwise potential can be written in a parametric form after taking logs, and the corresponding node-level effect can then be modeled using the covariates, in the spirit of a generalized linear model. Our final aim is to infer the distribution of the true labels $\sigma_i$ given the observed labels $y_i$ and the features $X_i$ of the transactions.
+% - **Related work.** Cite 2-3 relevant papers or analyses. If you are building on an existing paper, identify it here.
+\section{Related Work}
+The data that we will be using is described in \cite{weber2019antimoneylaunderingbitcoinexperimenting}. As a part of the paper they conducted a binary classification task predicting illicit transactions using variations of Logistic Regression (LR), Random Forest (RF), Multilayer Perceptrons (MLP), and Graph Convolutional Networks (GCN). Logistic regression does not account for the dependencies between transactions but is great at explainability. On the other hand, a Graph Convolutional Network (GCN) is not a probabilistic model. It is a parametric function that produces node embeddings or predictions using the graph structure. Our aim is to keep a probabilitic model and exploit the network structure as well. The model is motivated from the work of \cite{mukherjee2024logistic,daskalakis2020logistic} where they use a logistic regression model with a network regularization term to account for the dependencies between the data points. We will be using a similar approach, but we motivate the model using a bayesian framework.
+\section{AI Disclosure}
+I used AI tools to locate relevant data sources and to clarify certain definitions that I was unfamiliar with. I also used AI assistance for minor grammar corrections and sentence rephrasing. All substantive content, including the ideas, modeling, and analysis presented in this work, is my own and was not generated by AI.
+% bibtex entries
+\bibliographystyle{plain}
+\bibliography{refs}
+\end{document}
