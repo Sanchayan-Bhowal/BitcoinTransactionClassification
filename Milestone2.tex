@@ -1,8 +1,11 @@
-\documentclass[12pt]{amsart}
-\usepackage[utf8]{inputenc}
-\usepackage{amsmath}
-\usepackage{amssymb}
+\documentclass[11pt,reqno]{amsart}
+\usepackage{xifthen,setspace}
+\usepackage{bbm}
+\usepackage{esvect}
+\usepackage{amsmath} % provides numberwithin (and lots more)
 \usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{caption}
 \usepackage{hyperref}
 \hypersetup{
     colorlinks=true,
@@ -10,9 +13,65 @@
     filecolor=magenta,      
     urlcolor=cyan,
 }
+\usepackage{cleveref}
 \geometry{a4paper, margin=0.5in}
-\title{Milestone 2}
-\author{Sanchayan Bhowal, Nathan Nguyen}
+\usepackage{lipsum}  % for sample text
+%\usepackage{subfig}
+\usepackage[notcite,notref]{showkeys}
+\newtheorem{assumption}{Assumption}
+\newtheorem{example}{Example}
+\newtheorem{defi}{Definition}
+\newcommand{\lnr}{{\langle m \rangle}} 
+\newcommand{\ind}{{\mathbf{1}}}
+\newcommand{\vp}{{\phi}}
+\newcommand{\bz}{{\bm 0}}
+\newcommand{\var}{{\textrm{Var}}}
+\newcommand{\eps}{{\epsilon}}
+\newcommand{\p}{{\P}}
+%\usepackage{refcheck} 
+%\spacing{1.025}
+\allowdisplaybreaks
+\title[]{Milestone 2}
+\author[]{Tian Bai}
+\author[]{ Sanchayan Bhowal}
+\author[]{ Nathan Nguyen} 
 \begin{document}
+% \begin{abstract}
+%     In this paper
+% \end{abstract}
 \maketitle
+\section{Data Description}
+The data is obtained from the Elliptic bitcoin dataset (\url{https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.datasets.EllipticBitcoinDataset.html}), which contains information about bitcoin transactions. The dataset consists of a graph with over 200K Bitcoin accounts (nodes), 234K directed payment flows (edges), and 166 node features. The nodes features are anonymous due to security concerns. The dataset also contains labels for a subset of the nodes, where $-1$ denotes illicit transactions, $1$ denotes licit transactions, and $0$ denotes unknown transactions.
+\section{Exploratory Data Analysis}
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/elliptic_components/component_02.png}
+    \caption{Network Component}
+    \label{fig:network_component}
+\end{figure}
+The network has 49 connected components. The \cref{fig:network_component} shows one of the components.
+\section{Refined model sketch}
+The model is motivated from the work of \cite{mukherjee2024logistic,daskalakis2020logistic} where they use a logistic regression model with a network regularization term to account for the dependencies between the data points. We will be using a similar approach, but we motivate the model using a bayesian framework. Assume $\sigma_i \in \{-1, 1\}$ is the label of transaction $i$. Let $-1$ denote the illicit class and $1$ denote the licit class. We can model the probability of observing $\sigma_i$ given the features $X_i$ and the graph structure as follows:
+\begin{equation}
+    P(\sigma_1, \sigma_2, \ldots, \sigma_n | X,G) \propto \prod_{(i,j) \in E} \psi_{X_i, X_j}(\sigma_i, \sigma_j)
+\end{equation}
+Now, since the labels are binary, we can write the symmetric pairwise potential in a parametric form after taking logs as follows:
+\begin{equation}
+    \psi_{X_i,X_j}(\sigma_i, \sigma_j) = \exp\left(\beta_{ij} \sigma_i \sigma_j + \alpha_{ij} (\sigma_i + \sigma_j) +c_{ij}\right)
+\end{equation}
+Here, we make a model assumption that the network effect through each edge is the same, i.e., $\beta_{ij} = \beta$ for all $(i,j) \in E$. Hence, we can write the joint distribution of the labels as follows:
+\begin{align*}
+    P(\sigma_1, \sigma_2, \ldots, \sigma_n | X,G) & \propto \exp\left(\beta \sum_{(i,j) \in E} \sigma_i \sigma_j + \sum_{(i,j) \in E} \alpha_{ij} (\sigma_i + \sigma_j)\right) \\
+                                                  & = \exp\left(\beta \sum_{(i,j) \in E} \sigma_i \sigma_j + 2\sum_{i=1}^n \sigma_i \sum_{j: (i,j) \in E} \alpha_{ij}\right)   \\
+\end{align*}
+Now, we can model the node-level effect using the covariates as follows:
+\begin{equation}
+    \sum_{j: (i,j) \in E} \alpha_{ij} = X_i^T \gamma
+\end{equation}
+Here, $\gamma$ is a parameter vector that captures the effect of the features on the labels. Hence, we can write the joint distribution of the labels as follows:
+\begin{equation}
+    P(\sigma_1, \sigma_2, \ldots, \sigma_n | X,G) \propto \exp\left(\beta \sum_{(i,j) \in E} \sigma_i \sigma_j + 2\sum_{i=1}^n \sigma_i X_i^T \gamma\right)
+\end{equation}
+\bibliographystyle{plain}
+\bibliography{refs}
 \end{document}
