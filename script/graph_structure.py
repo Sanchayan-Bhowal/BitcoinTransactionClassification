@@ -4,6 +4,7 @@ import argparse
 from collections import Counter
 from pathlib import Path
 from typing import Iterable
+import numpy as np
 
 import matplotlib
 
@@ -37,12 +38,43 @@ def load_elliptic_data(root: Path | str = DEFAULT_DATA_ROOT):
     return dataset[0]
 
 
-def build_undirected_graph(data) -> nx.Graph:
+def build_undirected_graph(data, only_labeled=False) -> nx.Graph:
     """Build an undirected graph for weak connected-component analysis."""
     graph = nx.Graph()
-    graph.add_nodes_from(range(data.num_nodes))
-    edge_pairs = zip(data.edge_index[0].tolist(), data.edge_index[1].tolist())
-    graph.add_edges_from(edge_pairs)
+    if not only_labeled:
+        graph.add_nodes_from(range(data.num_nodes))
+        edge_pairs = zip(data.edge_index[0].tolist(), data.edge_index[1].tolist())
+        graph.add_edges_from(edge_pairs)
+    else:
+        labels = data.y.numpy()
+        labeled_nodes = np.flatnonzero(labels != 2)
+        graph.add_nodes_from(labeled_nodes)
+        labeled_edges = [
+            (u, v)
+            for u, v in zip(data.edge_index[0].tolist(), data.edge_index[1].tolist())
+            if labels[u] != 2 and labels[v] != 2
+        ]
+        graph.add_edges_from(labeled_edges)
+    return graph
+
+
+def build_directed_graph(data, only_labeled=False) -> nx.DiGraph:
+    """Build a directed graph."""
+    graph = nx.DiGraph()
+    if not only_labeled:
+        graph.add_nodes_from(range(data.num_nodes))
+        edge_pairs = zip(data.edge_index[0].tolist(), data.edge_index[1].tolist())
+        graph.add_edges_from(edge_pairs)
+    else:
+        labels = data.y.numpy()
+        labeled_nodes = np.flatnonzero(labels != 2)
+        graph.add_nodes_from(labeled_nodes)
+        labeled_edges = [
+            (u, v)
+            for u, v in zip(data.edge_index[0].tolist(), data.edge_index[1].tolist())
+            if labels[u] != 2 and labels[v] != 2
+        ]
+        graph.add_edges_from(labeled_edges)
     return graph
 
 
