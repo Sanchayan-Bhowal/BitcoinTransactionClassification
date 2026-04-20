@@ -7,6 +7,8 @@
 \usepackage{graphicx}
 \usepackage{caption}
 \usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{subcaption} % Required in your preamble
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
@@ -41,17 +43,81 @@
 % \end{abstract}
 \maketitle
 \section{Data Description}
-The data is obtained from the Elliptic bitcoin dataset (\url{https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.datasets.EllipticBitcoinDataset.html}), which contains information about bitcoin transactions. The dataset consists of a graph with over 200K Bitcoin accounts (nodes), 234K directed payment flows (edges), and 166 node features. The nodes features are anonymous due to security concerns. The dataset also contains labels for a subset of the nodes, where $-1$ denotes illicit transactions, $1$ denotes licit transactions, and $0$ denotes unknown transactions.
+The data is obtained from the  \href{https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.datasets.EllipticBitcoinDataset.html}{Elliptic bitcoin dataset}, which contains information about bitcoin transactions. The Elliptic Data Set maps Bitcoin transactions to real entities belonging to licit categories (exchanges, wallet providers, miners,
+licit services, etc.) versus illicit ones (scams, malware, terrorist organizations, ransomware, Ponzi schemes, etc.) \cite{weber2019antimoneylaunderingbitcoinexperimenting}. From the raw data, a graph is constructed where nodes represent transactions and edges represent the flow of Bitcoin currency from one transaction to another. A given
+transaction is deemed licit (versus illicit) if the entity initiating the transaction belongs to the licit category. 
+
+The dataset consists of a graph with over 200K Bitcoin accounts (nodes), 234K directed payment flows (edges), and 166 node features. The nodes features are anonymous due to security concerns. The dataset also contains labels for a subset of the nodes, where $-1$ denotes illicit transactions, $1$ denotes licit transactions, and $0$ denotes unknown transactions.
 \section{Exploratory Data Analysis}
+A preliminary analysis reveals several important features of the Bitcoin transaction network. \Cref{fig:net_comp} displays part of one of the 49 connected components in the graph. It also suggests that the graph contains relatively few cycles. In addition, a large number of nodes have unknown labels, shown in gray. \Cref{fig:heatmap} presents the correlation heatmap for the anonymous node features and indicates that most features are only weakly correlated. However, we do observe a few blocks of non-negligible correlation, suggesting dependence and possible redundancy among subsets of covariates. The neighborhood-level summaries reported in \Cref{table:node} and \Cref{table:neighbor} show substantial differences across node labels: illicit transactions tend to have a much larger proportion of illicit neighbors, whereas licit transactions are far less likely to be connected to illicit ones. In addition, \Cref{table:transition} shows that edges between nodes of the same class occur much more frequently than cross-class edges, which is consistent with a strong homophily effect in the network. Overall, these patterns suggest that the network structure contains meaningful information about transaction labels. This motivates the model described in the next section.
+
 \begin{figure}[ht]
-    \centering
-    \includegraphics[width=0.95\textwidth]{figures/elliptic_components/component_02.png}
-    \caption{Network Component}
-    \label{fig:network_component}
+     \centering
+     \begin{subfigure}[b]{0.58\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{figures/elliptic_components/component_02.png}
+         \caption{Network Component}
+         \label{fig:net_comp}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.4\textwidth}
+         \centering
+         \includegraphics[width=\textwidth]{figures/feature_correlation.png}
+         \caption{Correlation heatmap of features}
+         \label{fig:heatmap}
+     \end{subfigure}
+     \caption{Visualization of network components and feature correlations.}
 \end{figure}
-The network has 49 connected components. The \cref{fig:network_component} shows one of the components.
+
+\begin{table}[htbp]
+\centering
+\caption{Example node-level neighborhood features}
+\begin{tabular}{rrrrrr}
+\toprule
+idx & node & node label & labeled neighbors & illicit neighbors & \% illicit neighbor \\
+\midrule
+0 & 3  & licit & 62 & 1 & 0.0161 \\
+1 & 9  & licit & 23 & 0 & 0.0 \\
+2 & 10 & licit & 2  & 0 & 0.0 \\
+263 & 907   & illicit & 1 & 0 & 0.0  \\
+391 & 1361  & illicit & 1 & 0 & 0.0  \\
+\bottomrule
+\end{tabular}
+\label{table:node}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Neighborhood summary by node label}
+\begin{tabular}{lrrrrr}
+\toprule
+node label & nodes & labeled neighbor & illicit neighbor & \% illicit neighbor & \% has illicit neighbor \\
+\midrule
+illicit & 4545  & 0.8123 & 0.4392 & 0.5097 & 0.3001  \\
+licit   & 42019 & 1.6553 & 0.0404 & 0.0181 & 0.0244  \\
+\bottomrule
+\end{tabular}%
+\label{table:neighbor}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Transition counts between labeled source and target nodes}
+\begin{tabular}{lrr}
+\toprule
+source/target & licit & illicit \\
+\midrule
+licit   & 33930 & 1228 \\
+illicit & 468   & 998 \\
+\bottomrule
+\end{tabular}
+\label{table:transition}
+\end{table}
+
+
+
 \section{Refined model sketch}
-The model is motivated from the work of \cite{mukherjee2024logistic,daskalakis2020logistic} where they use a logistic regression model with a network regularization term to account for the dependencies between the data points. We will be using a similar approach, but we motivate the model using a bayesian framework. Assume $\sigma_i \in \{-1, 1\}$ is the label of transaction $i$. Let $-1$ denote the illicit class and $1$ denote the licit class. We can model the probability of observing $\sigma_i$ given the features $X_i$ and the graph structure as follows:
+The model is motivated from the work of \cite{daskalakis2020logistic,mukherjee2024logistic} where they use a logistic regression model with a network regularization term to account for the dependencies between the data points. We will be using a similar approach, but we motivate the model using a bayesian framework. Assume $\sigma_i \in \{-1, 1\}$ is the label of transaction $i$. Let $-1$ denote the illicit class and $1$ denote the licit class. We can model the probability of observing $\sigma_i$ given the features $X_i$ and the graph structure as follows:
 \begin{equation}
     P(\sigma_1, \sigma_2, \ldots, \sigma_n | X,G) \propto \prod_{(i,j) \in E} \psi_{X_i, X_j}(\sigma_i, \sigma_j)
 \end{equation}
@@ -74,4 +140,7 @@ Here, $\gamma$ is a parameter vector that captures the effect of the features on
 \end{equation}
 \bibliographystyle{plain}
 \bibliography{refs}
+
+\section{AI Disclosure}
+
 \end{document}
