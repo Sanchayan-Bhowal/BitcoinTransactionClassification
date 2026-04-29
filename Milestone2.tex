@@ -19,7 +19,7 @@
 \geometry{a4paper, margin=0.5in}
 \usepackage{lipsum}  % for sample text
 %\usepackage{subfig}
-\usepackage[notcite,notref]{showkeys}
+% \usepackage[notcite,notref]{showkeys}
 \newtheorem{assumption}{Assumption}
 \newtheorem{example}{Example}
 \newtheorem{defi}{Definition}
@@ -44,12 +44,15 @@
 \maketitle
 \section{Data Description}
 The data is obtained from the  \href{https://pytorch-geometric.readthedocs.io/en/stable/generated/torch_geometric.datasets.EllipticBitcoinDataset.html}{Elliptic bitcoin dataset}, which contains information about bitcoin transactions. The Elliptic Data Set maps Bitcoin transactions to real entities belonging to licit categories (exchanges, wallet providers, miners,
-licit services, etc.) versus illicit ones (scams, malware, terrorist organizations, ransomware, Ponzi schemes, etc.) \cite{weber2019antimoneylaunderingbitcoinexperimenting}. From the raw data, a graph is constructed where nodes represent transactions and edges represent the flow of Bitcoin currency from one transaction to another. A given
+licit services, etc.) versus illicit ones (scams, malware, terrorist organizations, ransomware, etc.) \cite{weber2019antimoneylaunderingbitcoinexperimenting}. From the raw data, a graph is constructed where nodes represent transactions and edges represent the flow of Bitcoin currency from one transaction to another. A given
 transaction is deemed licit (versus illicit) if the entity initiating the transaction belongs to the licit category. 
 
-The dataset consists of a graph with over 200K Bitcoin accounts (nodes), 234K directed payment flows (edges), and 166 node features. The nodes features are anonymous due to security concerns. The dataset also contains labels for a subset of the nodes, where $-1$ denotes illicit transactions, $1$ denotes licit transactions, and $0$ denotes unknown transactions.
+The dataset consists of a graph with over 200K Bitcoin transactions (nodes), 234K directed payment flows (edges), and 166 node features. The nodes features are anonymous due to security concerns. The first 94
+features represent local information about the transaction – including the time step, number of inputs/outputs, transaction fee, output volume. The dataset also contains labels for a subset of the nodes, where $-1$ denotes illicit transactions, $1$ denotes licit transactions, and $0$ denotes unknown transactions. The network has 49 components where each component is a set of transactions in a specific timestamp. 
 \section{Exploratory Data Analysis}
-A preliminary analysis reveals several important features of the Bitcoin transaction network. \Cref{fig:net_comp} displays part of one of the 49 connected components in the graph. It also suggests that the graph contains relatively few cycles. In addition, a large number of nodes have unknown labels, shown in gray. \Cref{fig:heatmap} presents the correlation heatmap for the anonymous node features and indicates that most features are only weakly correlated. However, we do observe a few blocks of non-negligible correlation, suggesting dependence and possible redundancy among subsets of covariates. The neighborhood-level summaries reported in \Cref{table:node} and \Cref{table:neighbor} show substantial differences across node labels: illicit transactions tend to have a much larger proportion of illicit neighbors, whereas licit transactions are far less likely to be connected to illicit ones. In addition, \Cref{table:transition} shows that edges between nodes of the same class occur much more frequently than cross-class edges, which is consistent with a strong homophily effect in the network. Overall, these patterns suggest that the network structure contains meaningful information about transaction labels. This motivates the model described in the next section.
+A preliminary analysis reveals several important features of the Bitcoin transaction network. \Cref{fig:net_comp} displays part of one of the 49 connected components in the graph. It also suggests that the graph contains relatively few cycles. In addition, a large number of nodes have unknown labels, shown in gray. \Cref{fig:heatmap} presents the correlation heatmap for the anonymous node features and indicates that most features are only weakly correlated. However, we do observe a few blocks of non-negligible correlation, suggesting dependence and possible redundancy among subsets of covariates. The neighborhood-level summaries reported in \Cref{table:node} and \Cref{table:neighbor} show substantial differences across node labels: illicit transactions tend to have a much larger proportion of illicit neighbors, whereas licit transactions are far less likely to be connected to illicit ones. In addition, \Cref{table:transition} shows that edges between nodes of the same class occur much more frequently than cross-class edges, which is consistent with a strong homophily effect in the network. 
+Finally, \Cref{fig:pca} displays the first two principal components of the features, showing that illicit nodes seems to be more homogeneous in the dominant feature directions.  
+The PCA plots \Cref{fig:pca} show substantial clustering structure in the node features, but licit and illicit transactions are not cleanly separated in the first two principal components, indicating that classification likely requires higher-dimensional or network-based information.
 
 \begin{figure}[ht]
      \centering
@@ -91,7 +94,7 @@ idx & node & node label & labeled neighbors & illicit neighbors & \% illicit nei
 \caption{Neighborhood summary by node label}
 \begin{tabular}{lrrrrr}
 \toprule
-node label & nodes & labeled neighbor & illicit neighbor & \% illicit neighbor & \% has illicit neighbor \\
+node label & nodes & labeled neighbor & illicit neighbor & \% neighbor illicit & \% has illicit neighbor \\
 \midrule
 illicit & 4545  & 0.8123 & 0.4392 & 0.5097 & 0.3001  \\
 licit   & 42019 & 1.6553 & 0.0404 & 0.0181 & 0.0244  \\
@@ -114,7 +117,12 @@ illicit & 468   & 998 \\
 \label{table:transition}
 \end{table}
 
-
+\begin{figure}[ht]
+     \centering
+     \includegraphics[width=\textwidth]{figures/PCA.png}
+     \caption{Visualization of node level features.}
+     \label{fig:pca}
+\end{figure}
 
 \section{Refined model sketch}
 The model is motivated from the work of \cite{daskalakis2020logistic,mukherjee2024logistic} where they use a logistic regression model with a network regularization term to account for the dependencies between the data points. We will be using a similar approach, but we motivate the model using a bayesian framework. Assume $\sigma_i \in \{-1, 1\}$ is the label of transaction $i$. Let $-1$ denote the illicit class and $1$ denote the licit class. We can model the probability of observing $\sigma_i$ given the features $X_i$ and the graph structure as follows:
@@ -142,5 +150,5 @@ Here, $\gamma$ is a parameter vector that captures the effect of the features on
 \bibliography{refs}
 
 \section{AI Disclosure}
-
+We used AI tools to locate relevant data sources and to clarify certain definitions that we were unfamiliar with. We also used AI assistance for minor grammar corrections and sentence rephrasing. All substantive content, including the ideas, modeling, and analysis presented in this work, is our own and was not generated by AI.
 \end{document}
