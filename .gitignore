@@ -15,3 +15,9 @@ data/
 .vscode/
 *.csv
 script/__pycache__
+script/validate_output_params.py
+output.txt
+figures/beta_gamma_norms_from_output.png
+figures/beta_norm_from_output.png
+figures/gamma_l2_norm_from_output.png
+figures/test_metrics_from_output_params.txt
