@@ -41,17 +41,255 @@
 % \begin{abstract}
 %     In this paper
 % \end{abstract}
-\maketitle 
+\maketitle
 
 \section{TODO}
 
 
 
-\bibliographystyle{plain}
-\bibliography{refs}
+
 
 \section*{Code Link}
 The relevant code can be found \href{https://github.com/Sanchayan-Bhowal/BitcoinTransactionClassification}{here}.
+
+\section{Model}
+
+We model the problem as a binary classification task on a multi-relation graph.
+Each node represents an observation, and the label is encoded as a spin variable $\sigma_i\in\{-1,+1\}$.
+We use the convention that $\sigma_i=-1$ denotes the illicit class and
+$\sigma_i=+1$ denotes the licit class. Let $X_i\in\mathbb R^d$ denote the
+feature vector of node $i$. The graph has three edge types, with edge sets
+$E_1, E_2, E_3$. In the Yelp graph, these correspond to the three relations \texttt{net\_rur}, \texttt{net\_rsr}, and \texttt{net\_rtr}.
+
+Our starting point is the network-regularized logistic regression framework of \cite{daskalakis2020logistic,mukherjee2024logistic}, where the labels are not treated as conditionally independent given the features. Instead, nearby labels in the graph are allowed to be dependent. We motivate the model through a pairwise Markov random field. For a single graph $G=(V,E)$, consider
+$$
+    \mathbb P(\sigma_1,\ldots,\sigma_n\mid X,G)
+    \propto
+    \prod_{(i,j)\in E}
+    \psi_{X_i,X_j}(\sigma_i,\sigma_j).
+$$
+Since $\sigma_i,\sigma_j\in\{-1,+1\}$, any symmetric pairwise log-potential
+can be written as
+$$
+    \log \psi_{X_i,X_j}(\sigma_i,\sigma_j)
+    =
+    \beta_{ij}\sigma_i\sigma_j
+    +
+    \alpha_{ij}(\sigma_i+\sigma_j)
+    +
+    c_{ij}.
+$$
+Equivalently,
+$$
+    \psi_{X_i,X_j}(\sigma_i,\sigma_j)
+    =
+    \exp\left\{
+    \beta_{ij}\sigma_i\sigma_j
+    +
+    \alpha_{ij}(\sigma_i+\sigma_j)
+    +
+    c_{ij}
+    \right\}.
+$$
+The interaction term $\beta_{ij}\sigma_i\sigma_j$ captures dependence between
+neighboring labels. If $\beta_{ij}>0$, adjacent labels prefer to agree; if
+$\beta_{ij}<0$, adjacent labels prefer to disagree. The terms
+$\alpha_{ij}(\sigma_i+\sigma_j)$ contribute to node-level external fields.
+
+In last milestone we assumed a common interaction strength across all edges $\beta_{ij}=\beta.$ and we also assumed a linear model $\sum_{j:j\sim i}\alpha_{ij}=2X_i^\top\theta.$
+
+In this setting, however, the graph has three different edge types. It is therefore too restrictive to use a single interaction parameter. The preceding model treats all edges of the same relation as equally
+informative. This is a strong assumption in fraud-detection graphs. An edge only indicates that two nodes share a certain relation; it does not necessarily mean that the two nodes should influence each other equally. Two connected nodes that are very similar in their features should plausibly exert more influence on each other than two connected nodes whose features are very different. Therefore, we replace the unweighted interaction by a similarity-weighted interaction.
+
+For an edge $(i,j)\in E_r$, define a feature-similarity weight $w_{ij}^{(r)}$
+In our implementation, we use the RBF kernel
+$$
+    w_{ij}^{(r)}
+    =
+    \exp\left(
+    -\frac{\|X_i-X_j\|_2^2}{2\tau_r^2}
+    \right),
+$$
+where $\tau_r>0$ is a bandwidth hyper-parameter for relation $r$. This gives high weight to feature-similar neighbors and low weight to feature-dissimilar neighbors.
+
+This leads to the weighted interaction model
+$$
+    \mathbb P_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+    \propto
+    \exp\left\{
+    \sum_{r=1}^3
+    \beta_r
+    \sum_{(i,j)\in E_r}
+    w_{ij}^{(r)}\sigma_i\sigma_j
+    +
+    2\sum_{i=1}^n\sigma_i X_i^\top\theta
+    \right\}.
+$$
+
+There is one further issue: node degrees can vary substantially. If we use the raw weighted sum $\sum_{j:(i,j)\in E_r}w_{ij}^{(r)}\sigma_j,$ then high-degree nodes can have much larger local fields simply because they
+have many neighbors. To make the graph statistics comparable across nodes, we normalize using weighted neighbor average,$D_i^{(r)}:=\sum_{k=1}^nA_{ik}^{(r)}w_{ik}^{(r)},$ for $r=1,2,3.$
+
+\[
+    \mathbb P_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+    \propto
+    \exp\left\{
+    \sum_{r=1}^3
+    \beta_r
+    \sum_{i=1}^n
+    \sum_{j=1}^n
+    \frac{
+    A_{ij}^{(r)}
+    w_{ij}^{(r)}
+    }{
+    \sqrt{D_i^{(r)}D_j^{(r)}}
+    }
+    \sigma_i\sigma_j
+    +
+    2\sum_{i=1}^n \sigma_i X_i^\top\theta
+    \right\}.
+\]
+
+Finally, instead of forcing the node-level feature effect to be linear, we also consider a nonlinear feature effect. We replace $X_i^\top\theta$ by a scalar-valued function $b_\theta(X_i).$ Thus the neural weighted multi-relation model is
+$$
+    \mathbb P_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)\propto\exp\left\{\sum_{r=1}^3\beta_r\sum_{(i,j)\in E_r}w_{ij}^{(r)}\sigma_i\sigma_j+2\sum_{i=1}^n\sigma_i b_\theta(X_i)\right\}.
+$$
+
+This formulation preserves the original network-regularized logistic idea while adapting it to a multi-relation graph, similarity-weighted edges, degree normalization, and nonlinear covariate effects.
+
+\section{Model Implementation}
+
+The full likelihood is difficult to optimize because the normalizing constant requires summing over all $2^n$ possible label configurations. We therefore estimate the parameters using pseudo-maximum likelihood.
+
+For a training node $i$, the fitted conditional probability of observing $\sigma_i$ is
+$$
+    \mathbb P_{\beta,\theta}(\sigma_i\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})
+    =
+    \frac{
+    \exp\left\{
+    \sigma_i
+    \left(
+    \sum_{r=1}^3
+    \beta_r
+    \sum_{j=1}^n
+    \frac{
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    }{
+    \sqrt{D_i^{(r)}D_j^{(r)}}
+    }
+    \sigma_j^{\mathrm{obs}}
+    +
+    2b_\theta(X_i)
+    \right)
+    \right\}
+    }{
+    2\cosh\left(
+    \sum_{r=1}^3
+    \beta_r
+    \sum_{j=1}^n
+    \frac{
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    }{
+    \sqrt{D_i^{(r)}D_j^{(r)}}
+    }
+    \sigma_j^{\mathrm{obs}}
+    +
+    2b_\theta(X_i)
+    \right)
+    }.
+$$
+Here $\sigma_j^{\mathrm{obs}}$ denotes an observed training label. Validation and test labels are not used when constructing the graph term.
+
+The negative pseudo-log-likelihood over the training set $\mathcal T$ is
+\begin{multline*}
+    \mathcal L(\beta,\theta)
+    =
+    \frac{1}{|\mathcal T|}
+    \sum_{i\in\mathcal T}
+    \left[
+    \log\left\{
+    2\cosh\left(
+    \sum_{r=1}^3
+    \beta_r
+    \sum_{j=1}^n
+    \frac{
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    }{
+    \sqrt{D_i^{(r)}D_j^{(r)}}
+    }
+    \sigma_j^{\mathrm{obs}}
+    +
+    2b_\theta(X_i)
+    \right)
+    \right\}\right.\\
+    \left.-
+    \sigma_i
+    \left(
+    \sum_{r=1}^3
+    \beta_r
+    \sum_{j=1}^n
+    \frac{
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    }{
+    \sqrt{D_i^{(r)}D_j^{(r)}}
+    }
+    \sigma_j^{\mathrm{obs}}
+    +
+    2b_\theta(X_i)
+    \right)
+    \right]
+\end{multline*}
+For the linear version, we take $b_\theta(X_i)=X_i^\top\theta.$ and for the neural version, we take $b_\theta(X_i)=\mathrm{MLP}_\theta(X_i),$
+where the multilayer perceptron has scalar output. The parameters $\beta$ and $\theta$ are optimized jointly using AdamW and backpropagation. The validation set is used only for early stopping and threshold selection.
+
+\section{Prediction and Evaluation}
+
+After training, the fitted probability that node $i$ has label $+1$ is
+$$
+    \widehat{\mathbb P}(\sigma_i=+1\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})
+    =
+    \operatorname{logit}^{-1}
+    \left[
+    2\left(
+    \sum_{r=1}^3
+    \widehat\beta_r
+    \sum_{j=1}^n
+    \frac{
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    }{
+    \sqrt{D_i^{(r)}D_j^{(r)}}
+    }
+    \sigma_j^{\mathrm{obs}}
+    +
+    2b_{\widehat\theta}(X_i)
+    \right)
+    \right].
+$$
+With our sign convention, this is the fitted probability that node $i$ belongs to the licit class.
+
+A binary prediction is obtained by thresholding this probability:
+$$
+    \widehat\sigma_i
+    =
+    \begin{cases}
+        +1, & \text{if }
+        \widehat{\mathbb P}(\sigma_i=+1\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})\ge t, \\
+        -1, & \text{otherwise.}
+    \end{cases}
+$$
+Since the classes are imbalanced, the default threshold $t=0.5$ may not be optimal. We choose $t$ using the validation set, for example by maximizing validation F1-score or validation balanced accuracy.
+
+We evaluate the model using ROC-AUC and average precision, which are threshold-independent metrics. We also report accuracy, precision, recall, F1-score, and balanced accuracy at the selected threshold. Average precision and F1-score are especially relevant because the illicit class is rare.
+
+To understand which edge types are more predictive, we inspect the fitted coefficients
+$$
+    \widehat\beta_1,\widehat\beta_2,\widehat\beta_3.
+$$
+A large value of $|\widehat\beta_r|$ indicates that relation $r$ has a strong graph effect after controlling for node features. A positive coefficient indicates assortative behavior, while a negative coefficient indicates disassortative behavior.
+
+Since the three graph covariates may still have different empirical scales, we also use ablation experiments. We remove one edge type at a time, refit the model, and compare validation and test performance. If removing relation $r$ causes a large drop in F1-score, balanced accuracy, or average precision, then relation $r$ contains substantial predictive information.
+
+\bibliographystyle{plain}
+\bibliography{refs}
 
 \section*{AI Disclosure}
 We used AI tools to locate relevant data sources and to clarify certain definitions that we were unfamiliar with. We also used AI assistance for minor grammar corrections and sentence rephrasing. All substantive content, including the ideas, modeling, and analysis presented in this work, is our own and was not generated by AI.
