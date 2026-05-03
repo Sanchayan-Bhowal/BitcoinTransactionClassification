@@ -1,0 +1,194 @@
+\documentclass[10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\usepackage{amsmath,amssymb,booktabs,array}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\title[Milestone 3]{Scam Police}
+\author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
+\date{}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Setup and Notation}
+\begin{itemize}
+    \item Binary label: $\sigma_i\in\{-1,+1\}$.
+    \item Convention: $\sigma_i=-1$ is illicit and $\sigma_i=+1$ is licit.
+    \item Node feature vector: $X_i\in\mathbb R^d$.
+    \item Three graph relations with adjacency matrices $A^{(1)},A^{(2)},A^{(3)}$.
+    \item For relation $r$, define the RBF edge weight
+    $$
+        w_{ij}^{(r)}=
+        \exp\left\{-\frac{\|X_i-X_j\|_2^2}{2\tau_r^2}\right\}.
+    $$
+    \item Weighted degree:
+    $$
+        D_i^{(r)}=\sum_{k=1}^n A_{ik}^{(r)}w_{ik}^{(r)}.
+    $$
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Model}
+The fitted distribution is
+\begin{equation*}
+\begin{aligned}
+    \mathbb P_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+    \propto
+    \exp\Bigg\{&
+    \sum_{r=1}^3 \beta_r
+    \sum_{1\le i<j\le n}
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    \left(
+        \frac{1}{D_i^{(r)}}+
+        \frac{1}{D_j^{(r)}}
+    \right)
+    \sigma_i\sigma_j \\
+    &+2\sum_{i=1}^n \sigma_i b_\theta(X_i)
+    \Bigg\}.
+\end{aligned}
+\end{equation*}
+
+\vspace{0.15cm}
+Here $\beta_1,\beta_2,\beta_3$ measure the graph effect of the three relations. The feature term is either
+$$
+    b_\theta(X_i)=X_i^\top\theta
+    \qquad\text{or}\qquad
+    b_\theta(X_i)=\operatorname{MLP}_\theta(X_i).
+$$
+\end{frame}
+
+\begin{frame}{Pseudo-Likelihood Objective}
+For node $i$, define the local field
+\begin{equation*}
+\begin{aligned}
+    H_i(\beta,\theta)
+    ={}&
+    \sum_{r=1}^3 \beta_r
+    \sum_{j=1}^n
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    \left(
+        \frac{1}{D_i^{(r)}}+
+        \frac{1}{D_j^{(r)}}
+    \right)
+    \sigma_j^{\mathrm{obs}}
+    +2b_\theta(X_i).
+\end{aligned}
+\end{equation*}
+Then
+$$
+    \mathbb P_{\beta,\theta}(\sigma_i=s\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})
+    =\frac{\exp\{sH_i(\beta,\theta)\}}{2\cosh H_i(\beta,\theta)},
+    \qquad s\in\{-1,+1\}.
+$$
+The training loss is
+$$
+    \mathcal L(\beta,\theta)
+    =\frac{1}{|\mathcal T|}
+    \sum_{i\in\mathcal T}
+    \left[\log\{2\cosh H_i(\beta,\theta)\}-\sigma_iH_i(\beta,\theta)\right].
+$$
+\end{frame}
+
+\begin{frame}{Implementation Procedure}
+\begin{enumerate}
+    \item Encode labels as $\sigma_i\in\{-1,+1\}$ and standardize node features.
+    \item Split nodes into train, validation, and test sets.
+    \item For each relation $r=1,2,3$, compute $w_{ij}^{(r)}$ and $D_i^{(r)}$.
+    \item Choose the feature model: linear $X_i^\top\theta$ or neural $\operatorname{MLP}_\theta(X_i)$.
+    \item For each training node, compute $H_i(\beta,\theta)$ using only observed training labels in the graph term.
+    \item Minimize $\mathcal L(\beta,\theta)$ jointly over $\beta$ and $\theta$ using AdamW and backpropagation.
+    \item Use validation performance for early stopping and threshold selection.
+\end{enumerate}
+\end{frame}
+
+\begin{frame}{Prediction Procedure}
+\begin{enumerate}
+    \item Fix the trained parameters $\widehat\beta$ and $\widehat\theta$.
+    \item For each validation or test node $i$, compute
+    $$
+        \widehat H_i=H_i(\widehat\beta,\widehat\theta).
+    $$
+    \item Convert the local field into a licit-class probability:
+    $$
+        \widehat p_i^{\mathrm{licit}}
+        =\widehat{\mathbb P}(\sigma_i=+1\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})
+        =\frac{1}{1+\exp\{-2\widehat H_i\}}.
+    $$
+    \item The illicit-class probability is
+    $$
+        \widehat p_i^{\mathrm{illicit}}=1-\widehat p_i^{\mathrm{licit}}.
+    $$
+    \item Choose a threshold $t$ on the validation set and predict
+    $$
+        \widehat\sigma_i=
+        \begin{cases}
+            +1, & \widehat p_i^{\mathrm{licit}}\ge t,\\
+            -1, & \widehat p_i^{\mathrm{licit}}<t.
+        \end{cases}
+    $$
+\end{enumerate}
+\end{frame}
+
+\begin{frame}{Evaluation Protocol}
+\begin{enumerate}
+    \item Train all models on the same training split.
+    \item Select thresholds using the same validation split.
+    \item Report final performance on the held-out test split only.
+    \item Since the illicit class is rare, prioritize:
+    $$
+        \text{average precision},\qquad
+        \text{illicit-class F1},\qquad
+        \text{balanced accuracy}.
+    $$
+    \item Also report ROC-AUC, accuracy, illicit precision, illicit recall, and the confusion matrix.
+    \item Run relation ablations: remove one edge type at a time, refit, and compare the drop in performance.
+\end{enumerate}
+\end{frame}
+
+\begin{frame}{Comparison with Baselines}
+\small
+\begin{table}
+\centering
+\begin{tabular}{lccccc}
+\toprule
+Model & ROC-AUC & AP & Bal. Acc. & F1 illicit & Recall illicit \\
+\midrule
+Logistic regression, features only & -- & -- & -- & -- & -- \\
+MLP, features only & -- & -- & -- & -- & -- \\
+Graph baseline, unweighted & -- & -- & -- & -- & -- \\
+GCN / GraphSAGE baseline & -- & -- & -- & -- & -- \\
+Proposed linear model & -- & -- & -- & -- & -- \\
+Proposed neural weighted model & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{0.15cm}
+Main comparison points:
+\begin{itemize}
+    \item Does graph information improve over feature-only models?
+    \item Does relation-specific weighting improve over an unweighted graph model?
+    \item Which relation contributes most, based on ablations and fitted $\widehat\beta_r$ values?
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Takeaways to Report}
+\begin{itemize}
+    \item The proposed model combines node features with three relation-specific graph effects.
+    \item RBF edge weights make graph interactions feature-sensitive.
+    \item Degree normalization prevents high-degree nodes from dominating the local field.
+    \item Pseudo-likelihood avoids computing the full partition function.
+    \item Final results should be judged mainly by average precision, illicit F1, and balanced accuracy rather than raw accuracy.
+\end{itemize}
+\end{frame}
+
+\end{document}
