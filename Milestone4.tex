@@ -202,12 +202,27 @@ This quantity is largest near $\widehat p_i=1/2$ and close to zero when the
 posterior marginal is near $0$ or $1$. Thus it measures posterior uncertainty in
 the node-wise classification score.
 
-\begin{figure}[!h]
+\begin{figure}[ht]
     \centering
-    \includegraphics[width=0.85\textwidth]{figures/fraud_yelp/var_comp_mcmc.png}
-    \caption{Distribution of MCMC marginal variances
-    $\widehat p_i(1-\widehat p_i)$ over non-training nodes.}
-    \label{fig:marginal_variance}
+
+    \begin{subfigure}[t]{0.55\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/fraud_yelp/var_comp_mcmc.png}
+        \caption{Distribution of MCMC marginal variances
+    $\widehat p_i(1-\widehat p_i)$ under different models.}
+        \label{fig:marginal_variance}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.4\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/fraud_yelp/varHmNnAblationMcmc.png}
+        \caption{Distribution of MCMC marginal variances
+    $\widehat p_i(1-\widehat p_i)$ under different edge-type ablations (HM model).}
+        \label{fig:hmnnablation}
+    \end{subfigure}
+
+    \caption{FraudYelp model performance comparison.}
+    \label{fig:1}
 \end{figure}
 
 Figure~\ref{fig:marginal_variance} shows that the HM weighted model and the unweighted model produce substantially smaller marginal variances than the GM weighted model. Thus, under the fitted MCMC posterior, these models give more concentrated marginal predictions. In particular, the HM weighted model is both aligned with our specified degree-normalized weighted Ising likelihood and gives lower posterior uncertainty than the GM weighted variants.
@@ -219,9 +234,14 @@ The neural field can represent more heterogeneous covariate effects, which can l
 
 \subsection{Posterior marginal variance under edge ablations.}
 For each fitted HM weighted neural model, we generated MCMC samples and computed the posterior fraud marginal.
-Figure \ref{} shows that the \texttt{net\_rur}-only HM weighted neural model has larger posterior marginal variance than the models using \texttt{net\_rur + net\_rsr} or \texttt{net\_rur + net\_rtr}. Hence the extra edge relation reduces posterior uncertainty. This does not contradict the ablation table: \texttt{net\_rur} is still the dominant relation for prediction, but the secondary relations provide additional signal that moves some nodes away
+Figure \ref{fig:hmnnablation} shows that the \texttt{net\_rur}-only HM weighted neural model has larger posterior marginal variance than the models using \texttt{net\_rur + net\_rsr} or \texttt{net\_rur + net\_rtr}. Hence the extra edge relation reduces posterior uncertainty. This does not contradict the ablation table: \texttt{net\_rur} is still the dominant relation for prediction, but the secondary relations provide additional signal that moves some nodes away
 from the decision boundary.
 
+
+\section*{AI Disclosure}
+% {\color{red} TODO}
+We used AI assistance for minor grammar corrections and sentence rephrasing, as well as shortening our report to appropriate length. We design the original codebase and used AI to assist with better code generation and optimization. We verify carefully the results by sanity-checking the AI suggestions.
+For ablation on GM and HM model, we refactor the MCMC model code ourselves, with using some help of AI for faster debugging. 
 % \section{Comparison}
 
 % The original model uses the conditional fraud score $p_i^{\mathrm{cond}}$.
