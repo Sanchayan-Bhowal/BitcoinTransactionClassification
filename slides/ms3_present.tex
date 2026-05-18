@@ -19,176 +19,281 @@
     \titlepage
 \end{frame}
 
-\begin{frame}{Setup and Notation}
-\begin{itemize}
-    \item Binary label: $\sigma_i\in\{-1,+1\}$.
-    \item Convention: $\sigma_i=-1$ is illicit and $\sigma_i=+1$ is licit.
-    \item Node feature vector: $X_i\in\mathbb R^d$.
-    \item Three graph relations with adjacency matrices $A^{(1)},A^{(2)},A^{(3)}$.
-    \item For relation $r$, define the RBF edge weight
-    $$
-        w_{ij}^{(r)}=
-        \exp\left\{-\frac{\|X_i-X_j\|_2^2}{2\tau_r^2}\right\}.
-    $$
-    \item Weighted degree:
-    $$
-        D_i^{(r)}=\sum_{k=1}^n A_{ik}^{(r)}w_{ik}^{(r)}.
-    $$
-\end{itemize}
+\begin{frame}{Dataset overview}
+    \begin{itemize}
+        \item FraudYelpDataset, containing a graph structure where nodes are reviews and edges are graphs between reviews.
+        \item Three type of graphs: \texttt{net\_rur} (same user), \texttt{net\_rsr} (same product, same star rating), and \texttt{net\_rtr} (same product, same month)
+
+        \item The graph has 46k nodes ($85\%$ legitimate, $15\%$ fraud), 99k \texttt{rur}, 1.1M \texttt{rsr}, and 6.8M \texttt{rtr} edges, with $32$ anonymized features per node.
+    \end{itemize}
 \end{frame}
 
-\begin{frame}{Model}
-The fitted distribution is
-\begin{equation*}
-\begin{aligned}
-    \mathbb P_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+\begin{frame}{Graph Structure}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\linewidth]{figures/fraud_yelp/yelpchi_largest_component_sample.png}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Homophily Analysis}
+  \begin{center}
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Relation} & \textbf{\# Edges} & $P(\text{same class} \mid \text{edge type})$ & $P(\text{fraud} \mid \text{fraud neighbor})$ \\
+    \midrule
+    \texttt{net\_rsr} & 6{,}805{,}486 & 0.772 & 0.186 \\
+    \texttt{net\_rtr} & 1{,}147{,}232 & 0.759 & 0.176 \\
+    \texttt{net\_rur} &      98{,}630 & 0.996 & 0.909 \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Homophily Analysis}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\linewidth]{figures/fraud_yelp/cc-by-edge-type.png}
+        \caption{Connected components under different relations}
+        \label{fig:placeholder}
+    \end{figure}
+\end{frame}
+
+
+\begin{frame}{Baseline: CAR-Regularized Logistic Regression}
+  \begin{block}{Model}
+    \[
+      \text{logit}\,\mathbb{P}(y_i = 1)
+      = \ell_i + b + \gamma\, z_i^{\textsf{rur}} + u_i
+    \]
+  \end{block}
+
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Component lifting term:}
+      \[
+        z_i^{\textsf{rur}} = \log\frac{\theta_i}{1-\theta_i} - \log\frac{\hat\pi}{1-\hat\pi}
+      \]
+      $\theta_i$ estimated via \textbf{Empirical Bayes Beta-Binomial}:
+      \[
+        \theta_i = \frac{a + k_C}{a + b + n_C}
+      \]
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Graph-Laplacian (CAR) regularizer:}
+      \[
+        \pi(u) \propto \exp\left(-\frac{1}{2\tau^2} u^\top(I-W)u\right)
+      \]
+      \[
+        \Leftrightarrow \quad \min\ \text{BCE} + \lambda \sum_{(i,j)\in E}(u_i - u_j)^2
+      \]
+    \end{column}
+  \end{columns}
+
+  \vspace{0.6em}
+  \begin{alertblock}{Empirical Finding}
+    The CAR prior \emph{only marginally} improves over plain logistic regression.
+  \end{alertblock}
+\end{frame}
+
+\section{Main Model: Weighted Multi-graph Ising Model}
+%============================================================
+
+\begin{frame}{Pairwise Markov Random Field Motivation}
+  Drop the conditional-independence assumption: let neighboring labels be \emph{dependent}.
+
+  \vspace{0.5em}
+  For a single graph $G=(V,E)$, consider:
+  \[
+    \mathbb{P}(\sigma_1,\ldots,\sigma_n \mid X, G)
     \propto
-    \exp\Bigg\{&
-    \sum_{r=1}^3 \beta_r
-    \sum_{1\le i<j\le n}
-    A_{ij}^{(r)}w_{ij}^{(r)}
-    \left(
-        \frac{1}{D_i^{(r)}}+
-        \frac{1}{D_j^{(r)}}
-    \right)
-    \sigma_i\sigma_j \\
-    &+2\sum_{i=1}^n \sigma_i b_\theta(X_i)
-    \Bigg\}.
-\end{aligned}
-\end{equation*}
+    \prod_{(i,j)\in E} \psi_{X_i, X_j}(\sigma_i, \sigma_j),
+    \quad \sigma_i \in \{-1, +1\}
+  \]
 
-\vspace{0.15cm}
-Here $\beta_1,\beta_2,\beta_3$ measure the graph effect of the three relations. The feature term is either
-$$
-    b_\theta(X_i)=X_i^\top\theta
-    \qquad\text{or}\qquad
-    b_\theta(X_i)=\operatorname{MLP}_\theta(X_i).
-$$
+  \vspace{0.3em}
+  Any symmetric log-potential factors as:
+  \[
+    \log \psi_{ij}(\sigma_i,\sigma_j)
+    = \underbrace{\beta_{ij}\,\sigma_i\sigma_j}_{\text{edge weights}} + \underbrace{\alpha_{ij}(\sigma_i+\sigma_j)}_{\text{node weights}} + c_{ij}
+  \]
+
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \begin{block}{$\beta_{ij} > 0$}
+        Adjacent labels prefer to \textbf{agree} (homophily)
+      \end{block}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{block}{$\beta_{ij} < 0$}
+        Adjacent labels prefer to \textbf{disagree} (heterophily)
+      \end{block}
+    \end{column}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{Pseudo-Likelihood Objective}
-For node $i$, define the local field
-\begin{equation*}
-\begin{aligned}
-    H_i(\beta,\theta)
-    ={}&
-    \sum_{r=1}^3 \beta_r
-    \sum_{j=1}^n
-    A_{ij}^{(r)}w_{ij}^{(r)}
-    \left(
-        \frac{1}{D_i^{(r)}}+
-        \frac{1}{D_j^{(r)}}
-    \right)
-    \sigma_j^{\mathrm{obs}}
-    +2b_\theta(X_i).
-\end{aligned}
-\end{equation*}
-Then
-$$
-    \mathbb P_{\beta,\theta}(\sigma_i=s\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})
-    =\frac{\exp\{sH_i(\beta,\theta)\}}{2\cosh H_i(\beta,\theta)},
-    \qquad s\in\{-1,+1\}.
-$$
-The training loss is
-$$
-    \mathcal L(\beta,\theta)
-    =\frac{1}{|\mathcal T|}
-    \sum_{i\in\mathcal T}
-    \left[\log\{2\cosh H_i(\beta,\theta)\}-\sigma_iH_i(\beta,\theta)\right].
-$$
+\begin{frame}{RBF Similarity Weighting}
+  \textbf{Motivation:} Nodes with \emph{similar features} should influence each other more.
+
+  \vspace{0.5em}
+  For each edge $(i,j) \in E_r$, define the \textbf{RBF weight}:
+  \[
+    w_{ij}^{(r)} = \exp\left(-\frac{\|X_i - X_j\|_2^2}{2\tau_r^2}\right), \quad \tau_r > 0 \text{ (bandwidth per graph)}
+  \]
+
+  \vspace{0.4em}
+  \textbf{Degree normalization} prevents high-degree nodes from dominating, using weighted degree $D_i^{(r)} = \sum_k A_{ik}^{(r)} w_{ik}^{(r)}$:
+  \[
+    \text{Edge contribution:} \quad \beta_{ij}^{(r)}=\beta_r
+    A_{ij}^{(r)} w_{ij}^{(r)}\left(\frac{1}{D_i^{(r)}} + \frac{1}{D_j^{(r)}}\right)\sigma_i\sigma_j
+  \]
 \end{frame}
 
-\begin{frame}{Implementation Procedure}
-\begin{enumerate}
-    \item Encode labels as $\sigma_i\in\{-1,+1\}$ and standardize node features.
-    \item Split nodes into train, validation, and test sets.
-    \item For each relation $r=1,2,3$, compute $w_{ij}^{(r)}$ and $D_i^{(r)}$.
-    \item Choose the feature model: linear $X_i^\top\theta$ or neural $\operatorname{MLP}_\theta(X_i)$.
-    \item For each training node, compute $H_i(\beta,\theta)$ using only observed training labels in the graph term.
-    \item Minimize $\mathcal L(\beta,\theta)$ jointly over $\beta$ and $\theta$ using AdamW and backpropagation.
-    \item Use validation performance for early stopping and threshold selection.
-\end{enumerate}
+\begin{frame}{Full Model Specification}
+  \begin{block}{Weighted multi-graph Ising Model}
+    \[
+      \mathbb{P}_{\beta,\theta}(\sigma \mid X, \{G_i\}_{i=1}^3)
+      \propto
+      e^{\sum_{r=1}^{3} \beta_r \sum_{(i,j)\in E_r} w_{ij}^{(r)}\left(\frac{1}{D_i^{(r)}} + \frac{1}{D_j^{(r)}}\right)\sigma_i\sigma_j
+        +
+        2\sum_{i=1}^n \sigma_i b_\theta(X_i)}
+    \]
+  \end{block}
+
+  \vspace{0.5em}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Two variants:}
+      \begin{itemize}
+        \item \texttt{hm\_weighted\_linear}: $b_\theta(X_i) = X_i^\top\theta$
+        \item \texttt{hm\_weighted\_nn}: MLP external field
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Parameters to learn:}
+      \begin{itemize}
+        \item $\beta_1, \beta_2, \beta_3$: graph couplings
+        \item $\theta$: feature parameters
+      \end{itemize}
+    \end{column}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{Prediction Procedure}
-\begin{enumerate}
-    \item Fix the trained parameters $\widehat\beta$ and $\widehat\theta$.
-    \item For each validation or test node $i$, compute
-    $$
-        \widehat H_i=H_i(\widehat\beta,\widehat\theta).
-    $$
-    \item Convert the local field into a licit-class probability:
-    $$
-        \widehat p_i^{\mathrm{licit}}
-        =\widehat{\mathbb P}(\sigma_i=+1\mid X,G_1,G_2,G_3,\sigma_{\mathrm{obs}})
-        =\frac{1}{1+\exp\{-2\widehat H_i\}}.
-    $$
-    \item The illicit-class probability is
-    $$
-        \widehat p_i^{\mathrm{illicit}}=1-\widehat p_i^{\mathrm{licit}}.
-    $$
-    \item Choose a threshold $t$ on the validation set and predict
-    $$
-        \widehat\sigma_i=
-        \begin{cases}
-            +1, & \widehat p_i^{\mathrm{licit}}\ge t,\\
-            -1, & \widehat p_i^{\mathrm{licit}}<t.
-        \end{cases}
-    $$
-\end{enumerate}
+%============================================================
+\section{Training \& Inference}
+%============================================================
+
+\begin{frame}{Pseudo-Maximum Likelihood Estimation}
+  \textbf{Challenge:} Normalizing constant sums over $2^n$ configurations --- intractable.
+
+  \vspace{0.4em}
+  \textbf{Solution:} Replace joint likelihood with \textbf{product of node-wise conditionals}.
+
+  \vspace{0.3em}
+  Each conditional is: $$\mathbb{P}(\sigma_i \mid X,G_i, \sigma_{-i}) = e^{\sigma_i h_i} / (2\cosh h_i)$$
+  where,
+  \[
+    h_i = \sum_{r=1}^{3} \beta_r \sum_j A_{ij}^{(r)} w_{ij}^{(r)}\left(\frac{1}{D_i^{(r)}} + \frac{1}{D_j^{(r)}}\right)\sigma_j^{\text{obs}} + 2\,b_\theta(X_i)
+  \]
+
+
+  \begin{block}{Pseudo-Log-Likelihood Objective}
+    \[
+      \mathcal{L}(\beta, \theta) = \frac{1}{|\mathcal{T}|}\sum_{i\in\mathcal{T}} \bigl[\log(2\cosh h_i) - \sigma_i h_i\bigr]
+    \]
+  \end{block}
 \end{frame}
 
-\begin{frame}{Evaluation Protocol}
-\begin{enumerate}
-    \item Train all models on the same training split.
+\begin{frame}{Prediction \& Threshold Selection}
+  Fitted probability that node $i$ is \emph{legitimate} ($\sigma_i = +1$):
+  \[
+    \hat p_i
+    = \operatorname{logit}^{-1}\left[2\left(\sum_{r=1}^3 \hat\beta_r A_{ij}^{(r)} w_{ij}^{(r)}\left(\tfrac{1}{D_i^{(r)}}+\tfrac{1}{D_j^{(r)}}\right)\sigma_j^{\text{obs}} + 2b_{\hat\theta}(X_i)\right)\right]
+  \]
+
+  \textbf{Binary prediction:}
+      \[
+        \hat\sigma_i = \begin{cases} +1 & \hat{p}_i \ge t \\ -1 & \text{otherwise} \end{cases}
+      \]
+      Threshold $t$ tuned on \textbf{validation set} to maximize F1.
+\end{frame}
+
+%============================================================
+\section{Results}
+
+\begin{frame}{Experimental Results}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \textbf{Protocol:}
+      \begin{itemize}
+          \item Train all models on the same training split.
     \item Select thresholds using the same validation split.
     \item Report final performance on the held-out test split only.
-    \item Since the illicit class is rare, prioritize:
-    $$
-        \text{average precision},\qquad
-        \text{illicit-class F1},\qquad
-        \text{balanced accuracy}.
-    $$
-    \item Also report ROC-AUC, accuracy, illicit precision, illicit recall, and the confusion matrix.
-    \item Run relation ablations: remove one edge type at a time, refit, and compare the drop in performance.
-\end{enumerate}
+      \end{itemize}
+      \vspace{0.5em}
+
+      % \begin{itemize}
+      %   \item $|\hat\beta_r|$ large $\Rightarrow$ graph $r$ has strong graph effect
+      %   \item $\hat\beta_r > 0$: assortative; $\hat\beta_r < 0$: disassortative
+      % \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{block}{Metrics evaluated}
+        \begin{tabular}{l}
+          F1-score \\
+          ROC-AUC \\
+          Average Precision \\
+          Balanced Accuracy \\
+          Precision / Recall \\
+        \end{tabular}
+      \end{block}
+
+      \vspace{0.5em}
+      \begin{alertblock}{Imbalanced classes}
+        Average precision and F1 are most relevant: the fraud class is only 15\% of the data.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
 \end{frame}
 
-\begin{frame}{Comparison with Baselines}
-\small
-\begin{table}
-\centering
-\begin{tabular}{lccccc}
-\toprule
-Model & ROC-AUC & AP & Bal. Acc. & F1 illicit & Recall illicit \\
-\midrule
-Logistic regression, features only & -- & -- & -- & -- & -- \\
-MLP, features only & -- & -- & -- & -- & -- \\
-Graph baseline, unweighted & -- & -- & -- & -- & -- \\
-GCN / GraphSAGE baseline & -- & -- & -- & -- & -- \\
-Proposed linear model & -- & -- & -- & -- & -- \\
-Proposed neural weighted model & -- & -- & -- & -- & -- \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\vspace{0.15cm}
-Main comparison points:
-\begin{itemize}
-    \item Does graph information improve over feature-only models?
-    \item Does relation-specific weighting improve over an unweighted graph model?
-    \item Which relation contributes most, based on ablations and fitted $\widehat\beta_r$ values?
-\end{itemize}
+\begin{frame}{Model Comparison: F1 and Metrics}
+    \begin{figure}
+            \centering
+            \includegraphics[width=0.9\textwidth]{figures/fraud_yelp/f1.png}
+            \caption{F1-score comparison.}
+    \end{figure}
+\vspace{-0.2cm}
+    % \begin{itemize}
+    %     \item \texttt{hm\_weighted\_nn} gives competitive performance.
+    %     \item \texttt{hm\_weighted\_linear} is less flexible but still competitive with several graph baselines.
+    % \end{itemize}
+\end{frame}
+\begin{frame}{Model Comparison: F1 and Metrics}
+    \begin{figure}
+        \centering
+            \includegraphics[width=0.7\textwidth]{figures/fraud_yelp/metrics_heatmap.png}
+            \caption{Metrics heatmap.}
+    \end{figure}
 \end{frame}
 
-\begin{frame}{Takeaways to Report}
-\begin{itemize}
-    \item The proposed model combines node features with three relation-specific graph effects.
-    \item RBF edge weights make graph interactions feature-sensitive.
-    \item Degree normalization prevents high-degree nodes from dominating the local field.
-    \item Pseudo-likelihood avoids computing the full partition function.
-    \item Final results should be judged mainly by average precision, illicit F1, and balanced accuracy rather than raw accuracy.
-\end{itemize}
+\begin{frame}{Key Findings}
+      \begin{itemize}
+        \item \texttt{hm\_weighted\_nn} achieves \alert{competitive performance} across all metrics
+        \item \texttt{hm\_weighted\_linear} outperforms most baselines (GCN, GAT) despite simplicity
+        \item Neural external field $b_\theta$ provides significant lift over linear
+        \item $\beta_{net\_rur}=0.68$ (user), $\beta_{net\_rsr}=0.49$ (star), $\beta_{net\_rtr}=0.38$ (time)
+      \end{itemize}
 \end{frame}
 
+% can you put a frame on beta here
+% \begin{frame}{Edge Importance}
+    
+% \end{frame}
+
+\begin{frame}{Future Directions}
+    \begin{itemize}
+        \item Get the $\hat{\mathbb{E}}[\sigma_i]$ and $\widehat{\mathrm{Var}}[\sigma_i]$ from $\hat \beta$ and $\hat \theta$ using MCMC.
+        \item Perform ablation studies to check which networks are more important.
+        \item Experiment with the weights and put priors on the weights.
+    \end{itemize}
+\end{frame}
 \end{document}

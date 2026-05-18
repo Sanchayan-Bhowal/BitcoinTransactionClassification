@@ -1,0 +1,235 @@
+
+\documentclass[10pt,reqno]{amsart}
+\usepackage[margin=0.55in]{geometry}
+\usepackage{amsmath,amssymb,bbm,booktabs,graphicx,hyperref}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{subcaption} % Required in your preamble
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+
+\newcommand{\Pbb}{\mathbb P}
+\newcommand{\R}{\mathbb R}
+\newcommand{\T}{\mathcal T}
+\newcommand{\ind}{\mathbbm 1}
+\newcommand{\eps}{\varepsilon}
+
+\title{Milestone 4: Critical Evaluation and Revision of the FraudYelp Ising Model (\href{https://github.com/Sanchayan-Bhowal/BitcoinTransactionClassification}{code link})}
+\author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.2em}
+
+\section{Model}
+We encode the label as a spin variable $\sigma_i \in \{-1,+1\}$, with $-1$ illicit and $+1$ licit. Let $X_i \in \mathbb{R}^d$ be the node feature vector, and let $E_1, E_2, E_3$ be the three relation-specific edge sets.
+$\texttt{net\_rur},\texttt{net\_rsr},\texttt{net\_rtr}$.  For relation $r$,
+\[
+    w_{ij}^{(r)}
+    =
+    \exp\left(-\frac{\|X_i-X_j\|_2^2}{2\tau_r^2}\right),
+    \qquad
+    D_i^{(r)}=\sum_k A_{ik}^{(r)}w_{ik}^{(r)}.
+\]
+The degree-normalized interaction weight is
+\[
+    J_{ij}^{(r)}
+    =
+    A_{ij}^{(r)}w_{ij}^{(r)}
+    \left(\frac{1}{D_i^{(r)}}+\frac{1}{D_j^{(r)}}\right).
+\]
+The fitted multi-relation Ising model is
+\[
+\Pbb_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+\propto
+\exp\left\{
+    \sum_{r=1}^3\beta_r\sum_{i,j}J_{ij}^{(r)}\sigma_i\sigma_j
+    +
+    2\sum_i\sigma_i b_\theta(X_i)
+\right\},
+\]
+where $b_\theta$ is either linear or an MLP. Since the partition function is
+intractable, we fit the model by pseudo-likelihood and optimize it with AdamW.
+
+We use the training labels $\sigma_{\T}$, to get the estimates $\hat{\beta}$ and $\hat{\theta}$. As part of Milestone 3 we estimated the fraud probability as:
+\[
+    p_i^{\mathrm{cond}}
+    =
+    \Pbb_{\widehat\beta,\widehat\theta}(\sigma_i=-1\mid \sigma_\T,X,G)
+    =
+    \operatorname{logit}^{-1}(-2\widehat h_i).
+\]
+
+\section{Criticism and Revision: MCMC Marginals}
+
+The main criticism is that $p_i^{\mathrm{cond}}$ is a local conditional
+probability, whereas the prediction target under the fitted dependent-label
+model is the posterior marginal
+\[
+    p_i^{\mathrm{marg}}
+    =
+    \Pbb_{\widehat\beta,\widehat\theta}(\sigma_i=-1\mid X,G).
+\]
+This marginal averages over the unknown labels outside the training set. The
+conditional score does not perform this averaging and therefore does not fully
+use the joint Ising model.
+
+Our revision is to estimate posterior marginals by Gibbs sampling. The Gibbs update uses
+\[
+    H_i(\sigma_{-i})
+    =
+    \sum_{r=1}^3
+    \widehat\beta_r\sum_{j\ne i}J_{ij}^{(r)}\sigma_j
+    +
+    2b_{\widehat\theta}(X_i),
+    \qquad
+    \Pbb(\sigma_i=-1\mid\sigma_{-i},X,G)
+    =
+    \operatorname{logit}^{-1}(-2H_i).
+\]
+After burn-in and thinning, we estimate
+\[
+    \widehat p_i^{\mathrm{MCMC}}
+    =
+    \frac1M\sum_{m=1}^M\ind\{\sigma_i^{(m)}=-1\}.
+\]
+The final classifier thresholds $\widehat p_i^{\mathrm{MCMC}}$, with the
+threshold chosen on validation F1.
+
+\begin{table}[h]
+\centering
+\caption{F1 at the validation-selected best-F1 threshold, rounded from the
+experiment plot.}
+\vspace{-0.35em}
+\begin{tabular}{lccc}
+\toprule
+Model & conditional score & MCMC marginal score & change \\
+\midrule
+\texttt{hm\_weighted\_nn}     & 0.710 & 0.738 & +0.027 \\
+\texttt{gm\_weighted\_nn}     & 0.686 & 0.711 & +0.025 \\
+\texttt{hm\_weighted\_linear} & 0.646 & 0.674 & +0.028 \\
+\texttt{unweigh\_neural}      & 0.666 & 0.655 & -0.011 \\
+\texttt{unweigh\_linear}      & 0.595 & 0.595 &  0.000 \\
+\texttt{gm\_weighted\_linear} & 0.556 & 0.583 & +0.027 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vspace{-0.7em}
+\section{Sensitivity Analysis}
+\subsection{Edge-Type Ablation}
+We evaluated sensitivity to the modeling assumption that all three relations
+should be included. For each ablation we refit the model and evaluated on the
+test split using the validation-F1 threshold.
+
+\begin{table}[h]
+\centering
+\caption{Edge-type ablation results.}
+\vspace{-0.35em}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrr}
+\toprule
+Ablation & Edge types used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
+\midrule
+\texttt{all\_3\_edges}
+& \texttt{rur,rsr,rtr}
+& 0.695562 & 0.930746 & 0.766819 & 856/444/305/7587 \\
+\texttt{no\_net\_rsr}
+& \texttt{rur,rtr}
+& 0.691794 & 0.927995 & 0.754971 & 881/419/366/7526 \\
+\texttt{no\_net\_rtr}
+& \texttt{rur,rsr}
+& 0.688172 & 0.929968 & 0.762140 & 832/468/286/7606 \\
+\texttt{only\_net\_rur}
+& \texttt{rur}
+& 0.682306 & 0.925771 & 0.749799 & 858/442/357/7535 \\
+\texttt{only\_net\_rsr}
+& \texttt{rsr}
+& 0.619048 & 0.891669 & 0.672229 & 780/520/440/7452 \\
+\texttt{no\_net\_rur}
+& \texttt{rsr,rtr}
+& 0.615948 & 0.892047 & 0.677019 & 757/543/401/7491 \\
+\texttt{only\_net\_rtr}
+& \texttt{rtr}
+& 0.601473 & 0.887858 & 0.660800 & 735/565/409/7483 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+The full model is best by F1 and average precision. However,
+\texttt{only\_net\_rur} is close to the full model:
+\[
+    0.695562-0.682306=0.013256
+\]
+in F1. In contrast, removing \texttt{net\_rur} reduces F1 to $0.615948$.
+Therefore the conclusions are sensitive to whether \texttt{net\_rur} is
+included, but less sensitive to the inclusion of \texttt{net\_rsr} or
+\texttt{net\_rtr} once \texttt{net\_rur} is present.
+
+\subsection{Sensitivity of posterior marginal uncertainty}
+
+As an additional sensitivity check, we compared the uncertainty of the MCMC
+marginals across model variants. After estimating $(\widehat\beta,\widehat\theta)$,
+we generated full MCMC samples
+\[
+    \sigma^{(1)},\ldots,\sigma^{(M)}\in\{-1,+1\}^N
+\]
+from the fitted Ising model. For each node, we estimated the marginal fraud
+probability
+\[
+    \widehat p_i
+    =
+    \frac1M
+    \sum_{m=1}^M
+    \mathbbm 1\{\sigma_i^{(m)}=-1\}.
+\]
+We then examined the marginal Bernoulli variance
+\[
+    \widehat p_i(1-\widehat p_i).
+\]
+This quantity is largest near $\widehat p_i=1/2$ and close to zero when the
+posterior marginal is near $0$ or $1$. Thus it measures posterior uncertainty in
+the node-wise classification score.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.95\textwidth]{marginal_variance_violin.png}
+    \caption{Distribution of MCMC marginal variances
+    $\widehat p_i(1-\widehat p_i)$ over non-training nodes.}
+    \label{fig:marginal_variance}
+\end{figure}
+
+Figure~\ref{fig:marginal_variance} shows that the HM weighted model and the
+unweighted model produce substantially smaller marginal variances than the
+GM weighted model. Thus, under the fitted MCMC posterior, these models give more
+concentrated marginal predictions. In particular, the HM weighted model is both
+aligned with our specified degree-normalized weighted Ising likelihood and gives
+lower posterior uncertainty than the GM weighted variants.
+
+For the HM and unweighted models, the linear external-field versions have lower
+marginal variance than the neural versions. This is expected because the linear
+field is less flexible and produces smoother, less variable node-level logits.
+The neural field can represent more heterogeneous covariate effects, which can
+leave more nodes near the decision boundary and hence increase
+$\widehat p_i(1-\widehat p_i)$. We do not interpret lower variance alone as
+better; rather, we use it together with F1 and average precision. The main
+conclusion is that the chosen HM weighted model gives competitive predictive
+performance while avoiding the large posterior marginal uncertainty seen in the
+GM weighted variants.
+
+\section{Comparison}
+
+The original model uses the conditional fraud score $p_i^{\mathrm{cond}}$.
+The revised model uses the MCMC posterior marginal score
+$\widehat p_i^{\mathrm{MCMC}}$. The revised score is better for the weighted
+models by F1 at the validation-selected threshold, with gains of about
+$0.025$--$0.028$ for the weighted neural and weighted linear variants. The
+ablations show that the best edge specification remains the full three-relation
+model, while \texttt{net\_rur} alone is a competitive simplification.
+
+\end{document}
