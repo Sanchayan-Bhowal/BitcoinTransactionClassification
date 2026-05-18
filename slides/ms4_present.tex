@@ -11,7 +11,6 @@
 \usepackage{lmodern}
 
 \title[Milestone 4]{Scam Police}
-\subtitle{Updates: MCMC Marginals, Ablations \& Sensitivity}
 \author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
 \date{}
 
@@ -144,7 +143,7 @@
     \end{figure}
 \end{frame}
 
-\begin{frame}{MCMC Results: Key Takeaway}
+\begin{frame}{MCMC Results}
     \begin{block}{Gains from MCMC revision}
         \begin{itemize}
             \item Weighted neural (\texttt{hm\_weighted\_nn}): $+0.028$ F1
@@ -154,7 +153,7 @@
     \end{block}
 
     \vspace{0.5em}
-    The improvement confirms that the full Ising joint structure carries signal beyond the local conditional --- the revision is warranted.
+    The improvement confirms that the full Ising joint structure carries signal beyond the local conditional.
 \end{frame}
 
 %============================================================
@@ -216,26 +215,9 @@
 \end{frame}
 
 \begin{frame}{Posterior Variance Under Edge Ablation}
-    \begin{columns}[T]
-        \begin{column}{0.60\textwidth}
-            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_nn_ablation_posterior_uncertainty.png}
-        \end{column}
-        \begin{column}{0.38\textwidth}
-            \small
-            \textbf{What is plotted:}
-            \[
-                \widehat p_i(1-\widehat p_i),
-                \qquad
-                \widehat p_i=\frac1M\sum_m \mathbbm 1\{\sigma_i^{(m)}=-1\}.
-            \]
-            \vspace{-0.5em}
-            \begin{itemize}
-                \item Larger value $\Rightarrow$ node remains near posterior boundary.
-                \item \texttt{rur}-only has visibly larger uncertainty.
-                \item Adding \texttt{rsr} or \texttt{rtr} reduces posterior uncertainty.
-            \end{itemize}
-        \end{column}
-    \end{columns}
+    \begin{figure}
+            \includegraphics[width=0.7\linewidth]{figures/fraud_yelp/varHmNnAblationMcmc.png}
+    \end{figure}
 
     \vspace{0.4em}
     \begin{block}{Interpretation}
@@ -243,7 +225,7 @@
     \end{block}
 \end{frame}
 
-\begin{frame}{Where is the Uncertainty? A \texttt{net\_rur} Component}
+\begin{frame}{Where is the Uncertainty?}
     \begin{columns}[T]
         \begin{column}{0.49\textwidth}
             \centering
@@ -268,60 +250,73 @@
     scales, so the comparison should be read qualitatively.
 \end{frame}
 
-\begin{frame}{Uncertainty Analysis Conclusions}
-    \begin{itemize}
-        \item Smaller $\widehat p_i(1-\widehat p_i)$ means the posterior marginal is closer to $0$ or $1$.
-        \item HM weighted variants give more concentrated marginals than GM weighted variants.
-        \item Edge ablations show that \texttt{rur} is the main predictive relation, while adding \texttt{rsr} or \texttt{rtr} can still reduce uncertainty.
-        \item Lower variance is a diagnostic, not a standalone objective: it must be read together with F1 and average precision.
-    \end{itemize}
+% \begin{frame}{Uncertainty Analysis Conclusions}
+%     \begin{itemize}
+%         \item Smaller $\widehat p_i(1-\widehat p_i)$ means the posterior marginal is closer to $0$ or $1$.
+%         \item HM weighted variants give more concentrated marginals than GM weighted variants.
+%         \item Edge ablations show that \texttt{rur} is the main predictive relation, while adding \texttt{rsr} or \texttt{rtr} can still reduce uncertainty.
+%         \item Lower variance is a diagnostic, not a standalone objective: it must be read together with F1 and average precision.
+%     \end{itemize}
 
-    \vspace{0.4em}
-    \begin{block}{Takeaway}
-        MCMC marginals let us evaluate both prediction quality and posterior uncertainty under the fitted Ising model.
-    \end{block}
-\end{frame}
+%     \vspace{0.4em}
+%     \begin{block}{Takeaway}
+%         MCMC marginals let us evaluate both prediction quality and posterior uncertainty under the fitted Ising model.
+%     \end{block}
+% \end{frame}
 
 %============================================================
-\section{Summary}
+% \section{Summary}
 %============================================================
 
-\begin{frame}{Summary of This Week}
-    \begin{columns}[T]
-        \begin{column}{0.48\textwidth}
-            \textbf{What we did:}
-            \begin{enumerate}
-                \item Replaced local conditional scoring with \textbf{MCMC posterior marginals}
-                \item Ran \textbf{edge-type ablations} across all 7 subsets
-                \item Analyzed \textbf{posterior uncertainty} across model variants
-            \end{enumerate}
-        \end{column}
-        \begin{column}{0.48\textwidth}
-            \textbf{What we found:}
-            \begin{itemize}
-                \item MCMC gains $\approx 0.025$--$0.028$ F1 over conditional scoring
-                \item \texttt{net\_rur} is by far the most important relation
-                \item HM weighted model: best F1 \emph{and} lowest uncertainty
-            \end{itemize}
-        \end{column}
-    \end{columns}
+% \begin{frame}{Summary of This Week}
+%     \begin{columns}[T]
+%         \begin{column}{0.48\textwidth}
+%             \textbf{What we did:}
+%             \begin{enumerate}
+%                 \item Replaced local conditional scoring with \textbf{MCMC posterior marginals}
+%                 \item Ran \textbf{edge-type ablations} across all 7 subsets
+%                 \item Analyzed \textbf{posterior uncertainty} across model variants
+%             \end{enumerate}
+%         \end{column}
+%         \begin{column}{0.48\textwidth}
+%             \textbf{What we found:}
+%             \begin{itemize}
+%                 \item MCMC gains $\approx 0.025$--$0.028$ F1 over conditional scoring
+%                 \item \texttt{net\_rur} is by far the most important relation
+%                 \item HM weighted model: best F1 \emph{and} lowest uncertainty
+%             \end{itemize}
+%         \end{column}
+%     \end{columns}
 
-    \vspace{0.8em}
-    \begin{alertblock}{Best model so far}
-        \texttt{hm\_weighted\_nn} with MCMC marginal scoring and all three edge types.
-    \end{alertblock}
+%     \vspace{0.8em}
+%     \begin{alertblock}{Best model so far}
+%         \texttt{hm\_weighted\_nn} with MCMC marginal scoring and all three edge types.
+%     \end{alertblock}
+% \end{frame}
+
+\begin{frame}[plain]
+    \centering
+    \vfill
+    {\Large Thank You}
+    \vfill
 \end{frame}
-
 
 %============================================================
 \appendix
 \section{Backup}
 %============================================================
-
-\begin{frame}{Backup: Local Field Explains Posterior Uncertainty}
+\begin{frame}{MCMC Correlation}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.5\linewidth]{}
+        \caption{Caption}
+        \label{fig:placeholder}
+    \end{figure}
+\end{frame}
+\begin{frame}{Local Field vs Posterior Uncertainty}
     \begin{columns}[T]
         \begin{column}{0.60\textwidth}
-            \includegraphics[width=\linewidth]{figures/fraud_yelp/local_field_vs_uncertainty.png}
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/locFieldvsVar_hmnn.png}
         \end{column}
         \begin{column}{0.38\textwidth}
             \small
@@ -340,25 +335,6 @@
     \vspace{0.35em}
     \small
     This supports the variance interpretation: nodes near the decision boundary are precisely those with weak fitted local evidence.
-\end{frame}
-
-\begin{frame}{Backup: Variance Identity for Spins}
-    Let
-    \[
-        \widehat\mu_i=\frac1M\sum_{m=1}^M \sigma_i^{(m)},
-        \qquad
-        \widehat p_i=\frac1M\sum_{m=1}^M\mathbbm 1\{\sigma_i^{(m)}=-1\}.
-    \]
-    Since $\sigma_i\in\{-1,+1\}$,
-    \[
-        \widehat p_i=\frac{1-\widehat\mu_i}{2},
-        \qquad
-        \widehat p_i(1-\widehat p_i)=\frac{1-\widehat\mu_i^2}{4}.
-    \]
-
-    \begin{block}{Interpretation}
-        Posterior variance is small exactly when the posterior spin mean is close to $+1$ or $-1$; it is largest when the posterior spin mean is near $0$.
-    \end{block}
 \end{frame}
 
 \end{document}
