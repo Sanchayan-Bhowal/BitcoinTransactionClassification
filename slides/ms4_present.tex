@@ -6,6 +6,7 @@
 \setbeamertemplate{footline}[frame number]
 
 \usepackage{amsmath,amssymb,booktabs,array,bbm}
+\usepackage{appendixnumberbeamer}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 
@@ -120,10 +121,11 @@
 
     \vspace{0.4em}
     \begin{enumerate}
-        \item Run Gibbs sampling to generate $M$ full configurations $\sigma^{(1)}, \ldots, \sigma^{(M)} \in \{-1,+1\}^N$.
+        \item Run Gibbs sampling with the fitted Ising model to generate $M$ full configurations
+        $\sigma^{(1)},\ldots,\sigma^{(M)}\in\{-1,+1\}^N$.
         \item Estimate marginal fraud probability per node:
         \[
-            \widehat{p}_i = \frac{1}{M}\sum_{m=1}^{M} \mathbbm{1}\{\sigma_i^{(m)} = -1\}
+            \widehat{p}_i = \frac{1}{M}\sum_{m=1}^{M} \mathbbm{1}\{\sigma_i^{(m)} = -1\}.
         \]
         \item Threshold $\widehat{p}_i^{\mathrm{MCMC}}$ on validation F1 for binary prediction.
     \end{enumerate}
@@ -213,16 +215,70 @@
     \end{figure}
 \end{frame}
 
+\begin{frame}{Posterior Variance Under Edge Ablation}
+    \begin{columns}[T]
+        \begin{column}{0.60\textwidth}
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_nn_ablation_posterior_uncertainty.png}
+        \end{column}
+        \begin{column}{0.38\textwidth}
+            \small
+            \textbf{What is plotted:}
+            \[
+                \widehat p_i(1-\widehat p_i),
+                \qquad
+                \widehat p_i=\frac1M\sum_m \mathbbm 1\{\sigma_i^{(m)}=-1\}.
+            \]
+            \vspace{-0.5em}
+            \begin{itemize}
+                \item Larger value $\Rightarrow$ node remains near posterior boundary.
+                \item \texttt{rur}-only has visibly larger uncertainty.
+                \item Adding \texttt{rsr} or \texttt{rtr} reduces posterior uncertainty.
+            \end{itemize}
+        \end{column}
+    \end{columns}
+
+    \vspace{0.4em}
+    \begin{block}{Interpretation}
+        \texttt{net\_rur} is dominant for prediction, but the secondary relations add aligned signal that makes the posterior marginals more decisive.
+    \end{block}
+\end{frame}
+
+\begin{frame}{Where is the Uncertainty? A \texttt{net\_rur} Component}
+    \begin{columns}[T]
+        \begin{column}{0.49\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_linear_net_rur_component_marginal_variance.png}
+
+            \scriptsize HM weighted linear
+        \end{column}
+        \begin{column}{0.49\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_nn_net_rur_component_marginal_variance.png}
+
+            \scriptsize HM weighted neural
+        \end{column}
+    \end{columns}
+
+    \vspace{0.35em}
+    \small
+    Both plots show the same 47-node \texttt{net\_rur} component, colored by
+    $\widehat p_i(1-\widehat p_i)$. Most nodes have near-zero posterior variance,
+    consistent with strong within-user homophily. The neural model leaves a small
+    number of nodes more uncertain. Note that the two color bars use different
+    scales, so the comparison should be read qualitatively.
+\end{frame}
+
 \begin{frame}{Uncertainty Analysis Conclusions}
     \begin{itemize}
-        \item \textbf{HM weighted} and \textbf{unweighted} models yield substantially \emph{smaller} marginal variances than GM weighted variants $\Rightarrow$ more concentrated posteriors.
-        \item Linear external field has lower variance than neural: less flexible, smoother node-level logits.
-        \item \textbf{Lower variance alone is not the goal} --- we read it jointly with F1 and average precision.
+        \item Smaller $\widehat p_i(1-\widehat p_i)$ means the posterior marginal is closer to $0$ or $1$.
+        \item HM weighted variants give more concentrated marginals than GM weighted variants.
+        \item Edge ablations show that \texttt{rur} is the main predictive relation, while adding \texttt{rsr} or \texttt{rtr} can still reduce uncertainty.
+        \item Lower variance is a diagnostic, not a standalone objective: it must be read together with F1 and average precision.
     \end{itemize}
 
-    \vspace{0.5em}
-    \begin{block}{Main conclusion}
-        The HM weighted model achieves competitive predictive performance \emph{and} avoids the large posterior uncertainty seen in GM weighted variants --- the best of both worlds.
+    \vspace{0.4em}
+    \begin{block}{Takeaway}
+        MCMC marginals let us evaluate both prediction quality and posterior uncertainty under the fitted Ising model.
     \end{block}
 \end{frame}
 
@@ -254,6 +310,55 @@
     \begin{alertblock}{Best model so far}
         \texttt{hm\_weighted\_nn} with MCMC marginal scoring and all three edge types.
     \end{alertblock}
+\end{frame}
+
+
+%============================================================
+\appendix
+\section{Backup}
+%============================================================
+
+\begin{frame}{Backup: Local Field Explains Posterior Uncertainty}
+    \begin{columns}[T]
+        \begin{column}{0.60\textwidth}
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/local_field_vs_uncertainty.png}
+        \end{column}
+        \begin{column}{0.38\textwidth}
+            \small
+            Conditional on the current neighbors,
+            \[
+                \mathbb{P}(\sigma_i=-1\mid \sigma_{-i})
+                =\operatorname{logit}^{-1}(-2H_i).
+            \]
+            Hence large $|H_i|$ pushes the conditional probability toward $0$ or $1$.
+
+            \vspace{0.4em}
+            The scatter shows the expected pattern: high posterior uncertainty appears mostly when the fitted local field is small.
+        \end{column}
+    \end{columns}
+
+    \vspace{0.35em}
+    \small
+    This supports the variance interpretation: nodes near the decision boundary are precisely those with weak fitted local evidence.
+\end{frame}
+
+\begin{frame}{Backup: Variance Identity for Spins}
+    Let
+    \[
+        \widehat\mu_i=\frac1M\sum_{m=1}^M \sigma_i^{(m)},
+        \qquad
+        \widehat p_i=\frac1M\sum_{m=1}^M\mathbbm 1\{\sigma_i^{(m)}=-1\}.
+    \]
+    Since $\sigma_i\in\{-1,+1\}$,
+    \[
+        \widehat p_i=\frac{1-\widehat\mu_i}{2},
+        \qquad
+        \widehat p_i(1-\widehat p_i)=\frac{1-\widehat\mu_i^2}{4}.
+    \]
+
+    \begin{block}{Interpretation}
+        Posterior variance is small exactly when the posterior spin mean is close to $+1$ or $-1$; it is largest when the posterior spin mean is near $0$.
+    \end{block}
 \end{frame}
 
 \end{document}
