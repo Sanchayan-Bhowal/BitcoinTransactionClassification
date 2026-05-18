@@ -18,7 +18,7 @@
 \newcommand{\ind}{\mathbbm 1}
 \newcommand{\eps}{\varepsilon}
 
-\title{Milestone 4: Critical Evaluation and Revision of the FraudYelp Ising Model (\href{https://github.com/Sanchayan-Bhowal/BitcoinTransactionClassification}{code link})}
+\title{Milestone 4 (\href{https://github.com/Sanchayan-Bhowal/BitcoinTransactionClassification}{code link})}
 \author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
 \date{}
 
@@ -65,7 +65,9 @@ We use the training labels $\sigma_{\T}$, to get the estimates $\hat{\beta}$ and
     \operatorname{logit}^{-1}(-2\widehat h_i).
 \]
 
-\section{Criticism and Revision: MCMC Marginals}
+\section{Criticism and Revision}
+\subsection{MCMC Marginals}
+\label{sec:crit1}
 
 The main criticism is that $p_i^{\mathrm{cond}}$ is a local conditional
 probability, whereas the prediction target under the fitted dependent-label
@@ -92,35 +94,56 @@ Our revision is to estimate posterior marginals by Gibbs sampling. The Gibbs upd
     =
     \operatorname{logit}^{-1}(-2H_i).
 \]
-After burn-in and thinning, we estimate
+ After estimating $(\widehat\beta,\widehat\theta)$,
+we generated full MCMC samples $\sigma^{(1)},\ldots,\sigma^{(M)}\in\{-1,+1\}^N$
+from the fitted Ising model. For each node, we estimated the marginal fraud
+probability
 \[
-    \widehat p_i^{\mathrm{MCMC}}
+    \widehat p_i
     =
-    \frac1M\sum_{m=1}^M\ind\{\sigma_i^{(m)}=-1\}.
+    \frac1M
+    \sum_{m=1}^M
+    \mathbbm 1\{\sigma_i^{(m)}=-1\}.
 \]
 The final classifier thresholds $\widehat p_i^{\mathrm{MCMC}}$, with the
 threshold chosen on validation F1.
 
-\begin{table}[h]
-\centering
-\caption{F1 at the validation-selected best-F1 threshold, rounded from the
-experiment plot.}
-\vspace{-0.35em}
-\begin{tabular}{lccc}
-\toprule
-Model & conditional score & MCMC marginal score & change \\
-\midrule
-\texttt{hm\_weighted\_nn}     & 0.710 & 0.738 & +0.027 \\
-\texttt{gm\_weighted\_nn}     & 0.686 & 0.711 & +0.025 \\
-\texttt{hm\_weighted\_linear} & 0.646 & 0.674 & +0.028 \\
-\texttt{unweigh\_neural}      & 0.666 & 0.655 & -0.011 \\
-\texttt{unweigh\_linear}      & 0.595 & 0.595 &  0.000 \\
-\texttt{gm\_weighted\_linear} & 0.556 & 0.583 & +0.027 \\
-\bottomrule
-\end{tabular}
-\end{table}
+The performance of this approach is reported in Figure~\ref{fig:f1}.  We observe that the MCMC-based approachs are better for the weighted
+models by F1 score at the validation-selected threshold, with gains of about $0.025$--$0.028$ for the weighted neural and weighted linear variants. 
 
-\vspace{-0.7em}
+\begin{figure}[ht]
+    \centering
+
+    \begin{subfigure}[t]{0.55\textwidth}
+        \centering
+        \includegraphics[width=\textwidth, trim={1.45cm 0 1.7cm 0}]{figures/fraud_yelp/f1_comp_mcmc.png}
+        \caption{Comparison between the MCMC revision and the previous model.}
+        \label{fig:f1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.4\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/fraud_yelp/new_heatmap.png}
+        \caption{Updated metrics heatmap across models.}
+        \label{fig:heatmap}
+    \end{subfigure}
+
+    \caption{FraudYelp model performance comparison.}
+    \label{fig:1}
+\end{figure}
+
+\subsection{Graph Neural Nets}
+
+As noted in the feedback on the previous milestone, the graph neural network models (GCN and GAT) were not predictive, even compared with simpler baseline models such as CAR-regularized logistic regression. We believe this is due to two main factors: imperfect hyperparameter tuning and limitations inherent to the design of the GCN/GAT baselines.
+
+We have therefore selected an improved set of hyperparameters, using a wider hidden layer, a slower learning rate, and a larger number of training epochs. The updated metrics heatmap is shown in Figure~\ref{fig:heatmap}.
+
+We observe that the F1 scores for vanilla GAT and GAT with residual connections improve substantially, from 0.29 to 0.40 and from 0.57 to 0.59, respectively. The corresponding metrics for GCN also improve, although the gains are less pronounced. Nevertheless, the overall performance remains inferior to that of the baseline logistic regression methods.
+
+One possible explanation is that the logistic regression baselines incorporate predictive information from different edge types, whereas the graph neural network baselines treat all edges uniformly. As shown in Section~\ref{sec:crit1}, the \texttt{net\_rur} edge type is far more informative than the other edge types, giving the logistic models an advantage. This explanation is also consistent with our finding that GCN/GAT models incorporating different relations perform much better than their vanilla counterparts.
+Second, vanilla GCN/GAT architectures primarily propagate node features, which may dilute the rare fraud signal across many legitimate neighbors, especially under severe class imbalance and in large relational graphs.
+
+% \vspace{-0.7em}
 \section{Sensitivity Analysis}
 \subsection{Edge-Type Ablation}
 We evaluated sensitivity to the modeling assumption that all three relations
@@ -131,10 +154,10 @@ test split using the validation-F1 threshold.
 \centering
 \caption{Edge-type ablation results.}
 \vspace{-0.35em}
-\resizebox{\textwidth}{!}{
+\resizebox{0.8\textwidth}{!}{
 \begin{tabular}{llrrrr}
 \toprule
-Ablation & Edge types used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
+Ablation & Edge types used & F1 & ROC-AUC & Avg. precision & \qquad TP/FN/FP/TN \\
 \midrule
 \texttt{all\_3\_edges}
 & \texttt{rur,rsr,rtr}
@@ -167,69 +190,46 @@ The full model is best by F1 and average precision. However,
     0.695562-0.682306=0.013256
 \]
 in F1. In contrast, removing \texttt{net\_rur} reduces F1 to $0.615948$.
-Therefore the conclusions are sensitive to whether \texttt{net\_rur} is
-included, but less sensitive to the inclusion of \texttt{net\_rsr} or
-\texttt{net\_rtr} once \texttt{net\_rur} is present.
+Therefore, the conclusions are sensitive to whether user-level information is included, but are less sensitive to the inclusion of ratings or timestamps once user information is already present.
 
 \subsection{Sensitivity of posterior marginal uncertainty}
 
 As an additional sensitivity check, we compared the uncertainty of the MCMC
-marginals across model variants. After estimating $(\widehat\beta,\widehat\theta)$,
-we generated full MCMC samples
-\[
-    \sigma^{(1)},\ldots,\sigma^{(M)}\in\{-1,+1\}^N
-\]
-from the fitted Ising model. For each node, we estimated the marginal fraud
-probability
-\[
-    \widehat p_i
-    =
-    \frac1M
-    \sum_{m=1}^M
-    \mathbbm 1\{\sigma_i^{(m)}=-1\}.
-\]
-We then examined the marginal Bernoulli variance
-\[
-    \widehat p_i(1-\widehat p_i).
-\]
+marginals across model variants.
+We examined the marginal Bernoulli variance
+$\widehat p_i(1-\widehat p_i)$.
 This quantity is largest near $\widehat p_i=1/2$ and close to zero when the
 posterior marginal is near $0$ or $1$. Thus it measures posterior uncertainty in
 the node-wise classification score.
 
-\begin{figure}[h]
+\begin{figure}[!h]
     \centering
-    \includegraphics[width=0.95\textwidth]{marginal_variance_violin.png}
+    \includegraphics[width=0.85\textwidth]{figures/fraud_yelp/var_comp_mcmc.png}
     \caption{Distribution of MCMC marginal variances
     $\widehat p_i(1-\widehat p_i)$ over non-training nodes.}
     \label{fig:marginal_variance}
 \end{figure}
 
-Figure~\ref{fig:marginal_variance} shows that the HM weighted model and the
-unweighted model produce substantially smaller marginal variances than the
-GM weighted model. Thus, under the fitted MCMC posterior, these models give more
-concentrated marginal predictions. In particular, the HM weighted model is both
-aligned with our specified degree-normalized weighted Ising likelihood and gives
-lower posterior uncertainty than the GM weighted variants.
+Figure~\ref{fig:marginal_variance} shows that the HM weighted model and the unweighted model produce substantially smaller marginal variances than the GM weighted model. Thus, under the fitted MCMC posterior, these models give more concentrated marginal predictions. In particular, the HM weighted model is both aligned with our specified degree-normalized weighted Ising likelihood and gives lower posterior uncertainty than the GM weighted variants.
 
 For the HM and unweighted models, the linear external-field versions have lower
 marginal variance than the neural versions. This is expected because the linear
 field is less flexible and produces smoother, less variable node-level logits.
-The neural field can represent more heterogeneous covariate effects, which can
-leave more nodes near the decision boundary and hence increase
-$\widehat p_i(1-\widehat p_i)$. We do not interpret lower variance alone as
-better; rather, we use it together with F1 and average precision. The main
-conclusion is that the chosen HM weighted model gives competitive predictive
-performance while avoiding the large posterior marginal uncertainty seen in the
-GM weighted variants.
+The neural field can represent more heterogeneous covariate effects, which can leave more nodes near the decision boundary and hence increase $\widehat p_i(1-\widehat p_i)$. We do not interpret lower variance alone as better; rather, we use it together with F1 and average precision.
 
-\section{Comparison}
+\subsection{Posterior marginal variance under edge ablations.}
+For each fitted HM weighted neural model, we generated MCMC samples and computed the posterior fraud marginal.
+Figure \ref{} shows that the \texttt{net\_rur}-only HM weighted neural model has larger posterior marginal variance than the models using \texttt{net\_rur + net\_rsr} or \texttt{net\_rur + net\_rtr}. Hence the extra edge relation reduces posterior uncertainty. This does not contradict the ablation table: \texttt{net\_rur} is still the dominant relation for prediction, but the secondary relations provide additional signal that moves some nodes away
+from the decision boundary.
 
-The original model uses the conditional fraud score $p_i^{\mathrm{cond}}$.
-The revised model uses the MCMC posterior marginal score
-$\widehat p_i^{\mathrm{MCMC}}$. The revised score is better for the weighted
-models by F1 at the validation-selected threshold, with gains of about
-$0.025$--$0.028$ for the weighted neural and weighted linear variants. The
-ablations show that the best edge specification remains the full three-relation
-model, while \texttt{net\_rur} alone is a competitive simplification.
+% \section{Comparison}
+
+% The original model uses the conditional fraud score $p_i^{\mathrm{cond}}$.
+% The revised model uses the MCMC posterior marginal score
+% $\widehat p_i^{\mathrm{MCMC}}$. The revised score is better for the weighted
+% models by F1 at the validation-selected threshold, with gains of about
+% $0.025$--$0.028$ for the weighted neural and weighted linear variants as shown in Figure \ref{fig:f1_comp}. The
+% ablations show that the best edge specification remains the full three-relation
+% model, while \texttt{net\_rur} alone is a competitive simplification.
 
 \end{document}

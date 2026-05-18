@@ -1,0 +1,259 @@
+\documentclass[10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\usepackage{amsmath,amssymb,booktabs,array,bbm}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\title[Milestone 4]{Scam Police}
+\subtitle{Updates: MCMC Marginals, Ablations \& Sensitivity}
+\author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
+\date{}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+%============================================================
+\section{Quick Recap}
+%============================================================
+
+\begin{frame}{Dataset Recap}
+    \textbf{FraudYelpDataset} --- graph of Yelp reviews
+    \vspace{0.5em}
+    \begin{columns}[T]
+        \begin{column}{0.48\textwidth}
+            \textbf{Three relation types:}
+            \begin{itemize}
+                \item \texttt{net\_rur}: same user
+                \item \texttt{net\_rsr}: same product + star rating
+                \item \texttt{net\_rtr}: same product + same month
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \textbf{Scale:}
+            \begin{itemize}
+                \item 46k nodes ($85\%$ legit, $15\%$ fraud)
+                \item 32 anonymized features per node
+                \item 99k \texttt{rur}, 1.1M \texttt{rsr}, 6.8M \texttt{rtr} edges
+            \end{itemize}
+        \end{column}
+    \end{columns}
+
+    \vspace{0.6em}
+    \begin{alertblock}{Key homophily finding (from last week)}
+        \texttt{net\_rur} is near-perfect assortative: $P(\text{fraud} \mid \text{fraud neighbor}) = 0.909$
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{Model Recap: Weighted Multi-Relation Ising}
+    Encode label as spin $\sigma_i \in \{-1,+1\}$ ($-1 = $ fraud).
+
+    \vspace{0.3em}
+    \textbf{RBF-weighted, degree-normalized interaction:}
+    \[
+        w_{ij}^{(r)} = \exp\!\left(-\frac{\|X_i-X_j\|_2^2}{2\tau_r^2}\right),
+        \qquad
+        J_{ij}^{(r)} = A_{ij}^{(r)} w_{ij}^{(r)}\!\left(\tfrac{1}{D_i^{(r)}}+\tfrac{1}{D_j^{(r)}}\right)
+    \]
+
+    \begin{block}{Joint distribution}
+        \[
+            \mathbb{P}_{\beta,\theta}(\sigma \mid X, G_1,G_2,G_3)
+            \propto
+            \exp\!\Bigl\{
+              \sum_{r=1}^3 \beta_r \sum_{i,j} J_{ij}^{(r)}\sigma_i\sigma_j
+              + 2\sum_i \sigma_i\, b_\theta(X_i)
+            \Bigr\}
+        \]
+    \end{block}
+
+    \vspace{0.2em}
+    Fitted via \textbf{pseudo-maximum likelihood} (AdamW). Two variants:
+    \texttt{hm\_weighted\_linear} and \texttt{hm\_weighted\_nn}.
+
+    \vspace{0.3em}
+    \begin{alertblock}{Last week's limitation}
+        Prediction used the \emph{local conditional} $p_i^{\mathrm{cond}} = \mathbb{P}(\sigma_i=-1 \mid \sigma_{\mathcal{T}}, X, G)$, not the true posterior marginal.
+    \end{alertblock}
+\end{frame}
+
+%============================================================
+\section{This Week: MCMC Marginals}
+%============================================================
+
+\begin{frame}{Criticism \& Revision}
+    \textbf{Problem:} $p_i^{\mathrm{cond}}$ is a \emph{local} conditional --- it fixes all observed labels and ignores uncertainty in the test nodes' labels.
+
+    \vspace{0.5em}
+    \textbf{What we really want:} the posterior \emph{marginal}
+    \[
+        p_i^{\mathrm{marg}}
+        =
+        \mathbb{P}_{\widehat\beta,\widehat\theta}(\sigma_i = -1 \mid X, G)
+    \]
+    which averages over the joint distribution of all unobserved labels.
+
+    \vspace{0.5em}
+    \textbf{Solution:} Estimate $p_i^{\mathrm{marg}}$ via \textbf{Gibbs sampling} on the fitted Ising model.
+
+    \vspace{0.4em}
+    The Gibbs update for node $i$:
+    \[
+        H_i(\sigma_{-i})
+        =
+        \sum_{r=1}^3 \widehat\beta_r \sum_{j \ne i} J_{ij}^{(r)}\sigma_j
+        + 2\,b_{\widehat\theta}(X_i),
+        \qquad
+        \mathbb{P}(\sigma_i=-1 \mid \sigma_{-i}) = \operatorname{logit}^{-1}(-2H_i)
+    \]
+\end{frame}
+
+\begin{frame}{MCMC Estimation Procedure}
+    After estimating $(\widehat\beta, \widehat\theta)$ by pseudo-likelihood:
+
+    \vspace{0.4em}
+    \begin{enumerate}
+        \item Run Gibbs sampling to generate $M$ full configurations $\sigma^{(1)}, \ldots, \sigma^{(M)} \in \{-1,+1\}^N$.
+        \item Estimate marginal fraud probability per node:
+        \[
+            \widehat{p}_i = \frac{1}{M}\sum_{m=1}^{M} \mathbbm{1}\{\sigma_i^{(m)} = -1\}
+        \]
+        \item Threshold $\widehat{p}_i^{\mathrm{MCMC}}$ on validation F1 for binary prediction.
+    \end{enumerate}
+
+    \vspace{0.5em}
+    \begin{block}{Why this is better}
+        The marginal naturally incorporates the global structure of the Ising model across all nodes, not just local conditional information at each test node.
+    \end{block}
+\end{frame}
+
+\begin{frame}{MCMC Results: F1 Comparison}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\linewidth]{figures/fraud_yelp/f1_comp_mcmc.png}
+        \caption{F1-score: MCMC marginal vs.\ previous conditional scoring.}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{MCMC Results: Key Takeaway}
+    \begin{block}{Gains from MCMC revision}
+        \begin{itemize}
+            \item Weighted neural (\texttt{hm\_weighted\_nn}): $+0.028$ F1
+            \item Weighted linear (\texttt{hm\_weighted\_linear}): $+0.025$ F1
+            \item Marginal scoring consistently outperforms conditional scoring for weighted models
+        \end{itemize}
+    \end{block}
+
+    \vspace{0.5em}
+    The improvement confirms that the full Ising joint structure carries signal beyond the local conditional --- the revision is warranted.
+\end{frame}
+
+%============================================================
+\section{Sensitivity Analysis}
+%============================================================
+
+\begin{frame}{Edge-Type Ablation}
+    \textbf{Question:} How important is each relation type?
+
+    \vspace{0.3em}
+    \begin{center}
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{llrrrr}
+        \toprule
+        Ablation & Edges used & F1 & ROC-AUC & Avg.\ Precision & TP/FN/FP/TN \\
+        \midrule
+        \texttt{all\_3\_edges}   & \texttt{rur,rsr,rtr} & \textbf{0.696} & \textbf{0.931} & \textbf{0.767} & 856/444/305/7587 \\
+        \texttt{no\_net\_rsr}    & \texttt{rur,rtr}     & 0.692 & 0.928 & 0.755 & 881/419/366/7526 \\
+        \texttt{no\_net\_rtr}    & \texttt{rur,rsr}     & 0.688 & 0.930 & 0.762 & 832/468/286/7606 \\
+        \texttt{only\_net\_rur}  & \texttt{rur}         & 0.682 & 0.926 & 0.750 & 858/442/357/7535 \\
+        \midrule
+        \texttt{only\_net\_rsr}  & \texttt{rsr}         & 0.619 & 0.892 & 0.672 & 780/520/440/7452 \\
+        \texttt{no\_net\_rur}    & \texttt{rsr,rtr}     & 0.616 & 0.892 & 0.677 & 757/543/401/7491 \\
+        \texttt{only\_net\_rtr}  & \texttt{rtr}         & 0.601 & 0.888 & 0.661 & 735/565/409/7483 \\
+        \bottomrule
+    \end{tabular}}
+    \end{center}
+\end{frame}
+
+\begin{frame}{Ablation Conclusions}
+    \begin{columns}[T]
+        \begin{column}{0.5\textwidth}
+            \begin{block}{\texttt{net\_rur} dominates}
+                \begin{itemize}
+                    \item Full model $-$ \texttt{only\_rur}: \\ $\Delta\text{F1} = 0.013$
+                    \item Removing \texttt{rur}: \\ $\Delta\text{F1} = -0.079$
+                \end{itemize}
+            \end{block}
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \begin{alertblock}{Sensitivity verdict}
+                Results are \textbf{sensitive} to \texttt{net\_rur}, \textbf{robust} to removing \texttt{net\_rsr} or \texttt{net\_rtr} once \texttt{rur} is present.
+            \end{alertblock}
+        \end{column}
+    \end{columns}
+
+    \vspace{0.6em}
+    This aligns with homophily statistics: \texttt{rur} edges connect nodes of the same user with near-perfect label agreement ($0.996$).
+\end{frame}
+
+\begin{frame}{Posterior Marginal Uncertainty}
+    \textbf{Metric:} Bernoulli variance $\widehat{p}_i(1-\widehat{p}_i)$ --- highest near the decision boundary $\widehat{p}_i = 1/2$.
+
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.95\textwidth]{figures/fraud_yelp/var_comp_mcmc.png}
+        \caption{Distribution of MCMC marginal variances $\widehat{p}_i(1-\widehat{p}_i)$ over non-training nodes.}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Uncertainty Analysis Conclusions}
+    \begin{itemize}
+        \item \textbf{HM weighted} and \textbf{unweighted} models yield substantially \emph{smaller} marginal variances than GM weighted variants $\Rightarrow$ more concentrated posteriors.
+        \item Linear external field has lower variance than neural: less flexible, smoother node-level logits.
+        \item \textbf{Lower variance alone is not the goal} --- we read it jointly with F1 and average precision.
+    \end{itemize}
+
+    \vspace{0.5em}
+    \begin{block}{Main conclusion}
+        The HM weighted model achieves competitive predictive performance \emph{and} avoids the large posterior uncertainty seen in GM weighted variants --- the best of both worlds.
+    \end{block}
+\end{frame}
+
+%============================================================
+\section{Summary}
+%============================================================
+
+\begin{frame}{Summary of This Week}
+    \begin{columns}[T]
+        \begin{column}{0.48\textwidth}
+            \textbf{What we did:}
+            \begin{enumerate}
+                \item Replaced local conditional scoring with \textbf{MCMC posterior marginals}
+                \item Ran \textbf{edge-type ablations} across all 7 subsets
+                \item Analyzed \textbf{posterior uncertainty} across model variants
+            \end{enumerate}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \textbf{What we found:}
+            \begin{itemize}
+                \item MCMC gains $\approx 0.025$--$0.028$ F1 over conditional scoring
+                \item \texttt{net\_rur} is by far the most important relation
+                \item HM weighted model: best F1 \emph{and} lowest uncertainty
+            \end{itemize}
+        \end{column}
+    \end{columns}
+
+    \vspace{0.8em}
+    \begin{alertblock}{Best model so far}
+        \texttt{hm\_weighted\_nn} with MCMC marginal scoring and all three edge types.
+    \end{alertblock}
+\end{frame}
+
+\end{document}
