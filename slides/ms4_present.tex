@@ -101,7 +101,7 @@
     which averages over the joint distribution of all unobserved labels.
 
     \vspace{0.5em}
-    \textbf{Solution:} Estimate $p_i^{\mathrm{marg}}$ via \textbf{Gibbs sampling} on the fitted Ising model.
+    \textbf{Solution:} Estimate $p_i^{\mathrm{marg}}$ via \textbf{Gibbs sampling} on the fitted model.
 
     \vspace{0.4em}
     The Gibbs update for node $i$:
@@ -120,7 +120,7 @@
 
     \vspace{0.4em}
     \begin{enumerate}
-        \item Run Gibbs sampling with the fitted Ising model to generate $M$ full configurations
+        \item Run Gibbs sampling with the fitted  model to generate $M$ full configurations
         $\sigma^{(1)},\ldots,\sigma^{(M)}\in\{-1,+1\}^N$.
         \item Estimate marginal fraud probability per node:
         \[
@@ -131,7 +131,7 @@
 
     \vspace{0.5em}
     \begin{block}{Why this is better}
-        The marginal naturally incorporates the global structure of the Ising model across all nodes, not just local conditional information at each test node.
+        The marginal naturally incorporates the global structure of the  model across all nodes, not just local conditional information at each test node.
     \end{block}
 \end{frame}
 
@@ -153,7 +153,44 @@
     \end{block}
 
     \vspace{0.5em}
-    The improvement confirms that the full Ising joint structure carries signal beyond the local conditional.
+    The improvement confirms that the full  joint structure carries signal beyond the local conditional.
+\end{frame}
+
+\begin{frame}{Posterior Predictive Check}
+
+Homophily before MCMC
+
+    \begin{table}[ht]
+\centering
+\begin{tabular}{llrr}
+\toprule
+\textbf{PPC group} & \textbf{Statistic} & \textbf{Observed} & \textbf{Replicated mean} \\
+\midrule
+net\_rur & edge\_same\_label\_agreement & 0.996431 & 0.969053 \\
+net\_rsr & edge\_same\_label\_agreement & 0.773120 & 0.773454 \\
+net\_rtr & edge\_same\_label\_agreement & 0.758120 & 0.761143 \\
+\bottomrule
+\end{tabular}
+\caption{Posterior predictive checks for edge-level label agreement of non-MCMC model.}
+\label{tab:ppc_edge_checks}
+\end{table}
+
+After MCMC
+
+    \begin{table}[ht]
+\centering
+\begin{tabular}{llrr}
+\toprule
+\textbf{PPC group} & \textbf{Statistic} & \textbf{Observed} & \textbf{Replicated mean} \\
+\midrule
+net\_rur & edge\_same\_label\_agreement & 0.996431 & 0.991085 \\
+net\_rsr & edge\_same\_label\_agreement & 0.773120 & 0.801131 \\
+net\_rtr & edge\_same\_label\_agreement & 0.758120 & 0.788649 \\
+\bottomrule
+\end{tabular}
+\caption{Posterior predictive checks for edge-level label agreement of MCMC model}
+\label{tab:ppc_edge_checks}
+\end{table}
 \end{frame}
 
 %============================================================
@@ -308,9 +345,9 @@
 \begin{frame}{MCMC Correlation}
     \begin{figure}
         \centering
-        \includegraphics[width=0.5\linewidth]{}
-        \caption{Caption}
-        \label{fig:placeholder}
+        \includegraphics[width=0.5\linewidth]{figures/fraud_yelp/mcmc_correlation.png}
+        \caption{Heatmap of correlation of the samples generated from our model}
+        \label{fig:mcmc_cor}
     \end{figure}
 \end{frame}
 \begin{frame}{Local Field vs Posterior Uncertainty}
@@ -335,6 +372,17 @@
     \vspace{0.35em}
     \small
     This supports the variance interpretation: nodes near the decision boundary are precisely those with weak fitted local evidence.
+\end{frame}
+
+\begin{frame}{GNN Training}
+    We also improved the training of baseline GNN models. 
+    \begin{figure}[t]
+        \centering
+        \includegraphics[width=0.516\textwidth]{figures/fraud_yelp/new_heatmap.png}
+        % \caption{Updated metrics heatmap across models.}
+        \label{fig:heatmap}
+    \end{figure}
+    Despite the improvements, the vanilla GNN models still perform poorly. This is likely due to (1) not accounting for edge types, and that (2) na\"ive message passing can dilute rare fraud signals.
 \end{frame}
 
 \end{document}
