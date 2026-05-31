@@ -147,25 +147,20 @@ We sample full label configurations using the \textbf{Swendsen-Wang algorithm}, 
 \end{frame}
 
 %------------------------------------------------------------
-\begin{frame}{MCMC marginals improve weighted models}
-\begin{columns}[T]
-\begin{column}{0.65\textwidth}
-\centering
-\includegraphics[width=\linewidth]{}
-\end{column}
-\begin{column}{0.32\textwidth}
-\small
-\textbf{Main message.}
-\begin{itemize}
-    \item Posterior marginals improve the weighted Ising variants.
-    \item The strongest model is the HM weighted neural model.
-    \item The gain is moderate but consistent for weighted models.
-\end{itemize}
+\begin{frame}{Model Comparison: F1 and Metrics}
+    \begin{figure}
+            \centering
+            \includegraphics[width=0.9\textwidth]{figures/fraud_yelp/f1_comp.png}
+            \caption{F1-score comparison.}
+    \end{figure}
+\end{frame}
 
-\vspace{0.2em}
-Compared with standard GCN/GAT baselines, the Ising model is faster, more interpretable, and gives better F1 in our experiments.
-\end{column}
-\end{columns}
+\begin{frame}{Model Comparison: F1 and Metrics}
+    \begin{figure}
+            \centering
+            \includegraphics[width=0.9\textwidth]{figures/fraud_yelp/accuracy_comp.png}
+            \caption{Balanced Accuracy comparison.}
+    \end{figure}
 \end{frame}
 
 %------------------------------------------------------------
@@ -201,7 +196,7 @@ Ablation & Edges used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
 
     \begin{figure}
         \centering
-        \includegraphics[width=0.95\textwidth]{figures/fraud_yelp/var_comp_mcmc.png}
+        \includegraphics[width=0.95\textwidth]{figures/fraud_yelp/var_.png}
         \caption{Distribution of MCMC marginal variances $\widehat{p}_i(1-\widehat{p}_i)$ over non-training nodes.}
     \end{figure}
 \end{frame}
