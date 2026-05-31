@@ -151,7 +151,7 @@ We sample full label configurations using the \textbf{Swendsen-Wang algorithm}, 
 \begin{columns}[T]
 \begin{column}{0.65\textwidth}
 \centering
-\includegraphics[width=\linewidth]{f1_mcmc.png}
+\includegraphics[width=\linewidth]{}
 \end{column}
 \begin{column}{0.32\textwidth}
 \small
@@ -306,30 +306,16 @@ Graph dependence is not just useful for prediction; modeling it directly also te
 \end{frame}
 
 \begin{frame}{MCMC mixing diagnostics}
-    \begin{columns}[T]
-        \begin{column}{0.62\textwidth}
+\begin{figure}
             \centering
-            \includegraphics[width=\textwidth]{mcmc_mixing.png}
-        \end{column}
-        \begin{column}{0.36\textwidth}
-            \small
-            \textbf{Diagnostic quantity:}
-            fraction of fraud-positive labels among sampled free nodes.
-
-            \vspace{0.5em}
-            \textbf{Checks:}
-            \begin{itemize}
-                \item Four independent chains have overlapping traces.
-                \item Running means stabilize near the same value.
-                \item Autocorrelation drops quickly after a few lags.
-                \item $\widehat R \approx 1$, indicating agreement across chains.
-            \end{itemize}
-
-            \vspace{0.3em}
-            \textbf{Conclusion:}
-            Swendsen--Wang mixes well for this summary statistic, so the posterior marginal estimates are stable.
-        \end{column}
-    \end{columns}
+            \includegraphics[width=\textwidth]{figures/fraud_yelp/mcmc_mixing.png}
+\end{figure}
+ % \begin{itemize}
+ %                \item Four independent chains have overlapping traces.
+ %                \item Running means stabilize near the same value.
+ %                \item Autocorrelation drops quickly after a few lags.
+ %                \item $\widehat R \approx 1$, indicating agreement across chains.
+ %            \end{itemize}
 \end{frame}
 
 \end{document}
