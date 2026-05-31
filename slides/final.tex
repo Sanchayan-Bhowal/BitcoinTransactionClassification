@@ -1,0 +1,335 @@
+\documentclass[10pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+
+\usepackage{amsmath,amssymb,booktabs,array,bbm,graphicx}
+\usepackage{appendixnumberbeamer}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+
+\graphicspath{{figures/}}
+
+\newcommand{\ind}{\mathbbm{1}}
+\newcommand{\T}{\mathcal T}
+\newcommand{\Pbb}{\mathbb P}
+
+\title[FraudYelp]{Scam Police: Interpretable Graph-Based Fraud Detection}
+\subtitle{Modeling Yelp review fraud with a multi-relation Ising model}
+\author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
+\date{}
+
+\begin{document}
+
+%------------------------------------------------------------
+\begin{frame}
+  \titlepage
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{The Problem}
+\begin{columns}[T]
+\begin{column}{0.50\textwidth}
+\textbf{Goal.} Predict fraudulent Yelp reviews using both:
+\begin{itemize}
+    \item review-level covariates,
+    \item graph dependence between related reviews.
+\end{itemize}
+
+\vspace{0.3em}
+\textbf{Dataset.}
+\begin{itemize}
+    \item 46k reviews.
+    \item 32 anonymized features.
+    \item Roughly $15\%$ fraud, $85\%$ legitimate.
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Three relation graphs.}
+\begin{itemize}
+    \item \texttt{net\_rur}: same user.
+    \item \texttt{net\_rsr}: same product and star rating.
+    \item \texttt{net\_rtr}: same product and month.
+\end{itemize}
+
+\vspace{0.4em}
+\begin{block}{Modeling question}
+Can we use the three networks directly, instead of hiding them inside graph embeddings?
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Graph Structure}
+    \begin{figure}
+        \centering
+        \includegraphics[width=\linewidth]{figures/fraud_yelp/yelpchi_largest_component_sample.png}
+    \end{figure}
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{Why use the graph directly?}
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Relation & \# edges & $P(\text{same label}\mid\text{edge})$ & $P(\text{fraud}\mid\text{fraud neighbor})$ \\
+\midrule
+\texttt{net\_rsr} & 6.8M & 0.772 & 0.186 \\
+\texttt{net\_rtr} & 1.1M & 0.759 & 0.176 \\
+\texttt{net\_rur} & 99k  & \textbf{0.996} & \textbf{0.909} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.7em}
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+\begin{block}{GNN/GAT approach}
+Learns network embeddings through message passing. Effective, but relation effects are harder to interpret.
+\end{block}
+\end{column}
+\begin{column}{0.48\textwidth}
+\begin{alertblock}{Our approach}
+Put the three networks directly into the probabilistic model, with one learned dependence strength per relation.
+\end{alertblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{Model: weighted multi-relation Ising model}
+Encode labels as spins:
+\[
+    \sigma_i=-1 \quad \text{fraud},\qquad \sigma_i=+1 \quad \text{legitimate}.
+\]
+
+\vspace{-0.5em}
+\begin{block}{Joint model}
+\[
+\Pbb_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+\propto
+\exp\left\{
+\sum_{r=1}^3 \beta_r \sum_{i,j}J_{ij}^{(r)}\sigma_i\sigma_j
++2\sum_i \sigma_i b_\theta(X_i)
+\right\}.
+\]
+\end{block}
+
+\vspace{-0.2em}
+\begin{itemize}
+    \item $b_\theta(X_i)$ learns the review-level external field from covariates.
+    \item $\beta_r$ measures the dependence strength of relation $r$.
+    \item $J_{ij}^{(r)}$ includes feature-similarity weighting and degree normalization.
+\end{itemize}
+
+\vspace{0.2em}
+\begin{alertblock}{Interpretability}
+Unlike a black-box graph embedding, $\beta_{\texttt{rur}}$, $\beta_{\texttt{rsr}}$, and $\beta_{\texttt{rtr}}$ directly quantify which networks matter.
+\end{alertblock}
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{Fitting and posterior prediction}
+\textbf{Training.} Estimate $(\widehat\beta,\widehat\theta)$ by pseudo-likelihood, optimized with AdamW.
+
+\textbf{Posterior fraud marginal:}
+\[
+\widehat p_i
+=\frac1M\sum_{m=1}^M
+\ind\{\sigma_i^{(m)}=-1\}.
+\]
+
+\vspace{0.7em}
+We sample full label configurations using the \textbf{Swendsen-Wang algorithm}, which is substantially faster than single-site updates.
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{MCMC marginals improve weighted models}
+\begin{columns}[T]
+\begin{column}{0.65\textwidth}
+\centering
+\includegraphics[width=\linewidth]{f1_mcmc.png}
+\end{column}
+\begin{column}{0.32\textwidth}
+\small
+\textbf{Main message.}
+\begin{itemize}
+    \item Posterior marginals improve the weighted Ising variants.
+    \item The strongest model is the HM weighted neural model.
+    \item The gain is moderate but consistent for weighted models.
+\end{itemize}
+
+\vspace{0.2em}
+Compared with standard GCN/GAT baselines, the Ising model is faster, more interpretable, and gives better F1 in our experiments.
+\end{column}
+\end{columns}
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{Sensitivity analysis: which graph matters?}
+\begin{center}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrr}
+\toprule
+Ablation & Edges used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
+\midrule
+\texttt{all\_3\_edges}   & \texttt{rur,rsr,rtr} & \textbf{0.696} & \textbf{0.931} & \textbf{0.767} & 856/444/305/7587 \\
+\texttt{no\_net\_rsr}    & \texttt{rur,rtr}     & 0.692 & 0.928 & 0.755 & 881/419/366/7526 \\
+\texttt{no\_net\_rtr}    & \texttt{rur,rsr}     & 0.688 & 0.930 & 0.762 & 832/468/286/7606 \\
+\texttt{only\_net\_rur}  & \texttt{rur}         & 0.682 & 0.926 & 0.750 & 858/442/357/7535 \\
+\midrule
+\texttt{only\_net\_rsr}  & \texttt{rsr}         & 0.619 & 0.892 & 0.672 & 780/520/440/7452 \\
+\texttt{no\_net\_rur}    & \texttt{rsr,rtr}     & 0.616 & 0.892 & 0.677 & 757/543/401/7491 \\
+\texttt{only\_net\_rtr}  & \texttt{rtr}         & 0.601 & 0.888 & 0.661 & 735/565/409/7483 \\
+\bottomrule
+\end{tabular}}
+\end{center}
+
+\vspace{0.4em}
+\begin{alertblock}{Conclusion}
+\texttt{net\_rur} is essential. The full model is best, but \texttt{net\_rur} alone retains most of the performance.
+\end{alertblock}
+\end{frame}
+
+%------------------------------------------------------------
+
+\begin{frame}{Posterior Marginal Uncertainty}
+    \textbf{Metric:} Bernoulli variance $\widehat{p}_i(1-\widehat{p}_i)$ --- highest near the decision boundary $\widehat{p}_i = 1/2$.
+
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.95\textwidth]{figures/fraud_yelp/var_comp_mcmc.png}
+        \caption{Distribution of MCMC marginal variances $\widehat{p}_i(1-\widehat{p}_i)$ over non-training nodes.}
+    \end{figure}
+\end{frame}
+
+\begin{frame}{Posterior Variance Under Edge Ablation}
+    \begin{figure}
+            \includegraphics[width=0.7\linewidth]{figures/fraud_yelp/varHmNnAblationMcmc.png}
+    \end{figure}
+
+    \vspace{0.4em}
+    \begin{block}{Interpretation}
+        \texttt{net\_rur} is dominant for prediction, but the secondary relations add aligned signal that makes the posterior marginals more decisive.
+    \end{block}
+\end{frame}
+
+\begin{frame}{Where is the Uncertainty?}
+    \begin{columns}[T]
+        \begin{column}{0.49\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_linear_net_rur_component_marginal_variance.png}
+
+            \scriptsize HM weighted linear
+        \end{column}
+        \begin{column}{0.49\textwidth}
+            \centering
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_nn_net_rur_component_marginal_variance.png}
+
+            \scriptsize HM weighted neural
+        \end{column}
+    \end{columns}
+
+    \vspace{0.35em}
+    \small
+    Both plots show the same 47-node \texttt{net\_rur} component, colored by
+    $\widehat p_i(1-\widehat p_i)$. Most nodes have near-zero posterior variance,
+    consistent with strong within-user homophily. The neural model leaves a small
+    number of nodes more uncertain. Note that the two color bars use different
+    scales, so the comparison should be read qualitatively.
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}{Takeaways}
+\begin{columns}[T]
+\begin{column}{0.50\textwidth}
+\textbf{Modeling.}
+\begin{itemize}
+    \item Directly encode three Yelp relation graphs.
+    \item Use covariates to learn the external field.
+    \item Use relation-specific parameters to interpret network importance.
+\end{itemize}
+\end{column}
+\begin{column}{0.47\textwidth}
+\textbf{Results.}
+\begin{itemize}
+    \item Swendsen-Wang marginals improve weighted models.
+    \item \texttt{net\_rur} is the most important network.
+    \item The model is faster and more interpretable than GCN/GAT baselines while improving F1.
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.8em}
+\begin{alertblock}{Final message}
+Graph dependence is not just useful for prediction; modeling it directly also tells us which relationships matter for fraud detection.
+\end{alertblock}
+\end{frame}
+
+%------------------------------------------------------------
+\begin{frame}[plain]
+    \centering
+    \vfill
+    {\Large Thank You}
+    \vfill
+\end{frame}
+
+%------------------------------------------------------------
+\appendix
+\section{Backup}
+
+\begin{frame}{Local Field vs Posterior Uncertainty}
+    \begin{columns}[T]
+        \begin{column}{0.60\textwidth}
+            \includegraphics[width=\linewidth]{figures/fraud_yelp/locFieldvsVar_hmnn.png}
+        \end{column}
+        \begin{column}{0.38\textwidth}
+            \small
+            Conditional on the current neighbors,
+            \[
+                \mathbb{P}(\sigma_i=-1\mid \sigma_{-i})
+                =\operatorname{logit}^{-1}(-2H_i).
+            \]
+            Hence large $|H_i|$ pushes the conditional probability toward $0$ or $1$.
+
+            \vspace{0.4em}
+            The scatter shows the expected pattern: high posterior uncertainty appears mostly when the fitted local field is small.
+        \end{column}
+    \end{columns}
+
+    \vspace{0.35em}
+    \small
+    This supports the variance interpretation: nodes near the decision boundary are precisely those with weak fitted local evidence.
+\end{frame}
+
+\begin{frame}{MCMC mixing diagnostics}
+    \begin{columns}[T]
+        \begin{column}{0.62\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{mcmc_mixing.png}
+        \end{column}
+        \begin{column}{0.36\textwidth}
+            \small
+            \textbf{Diagnostic quantity:}
+            fraction of fraud-positive labels among sampled free nodes.
+
+            \vspace{0.5em}
+            \textbf{Checks:}
+            \begin{itemize}
+                \item Four independent chains have overlapping traces.
+                \item Running means stabilize near the same value.
+                \item Autocorrelation drops quickly after a few lags.
+                \item $\widehat R \approx 1$, indicating agreement across chains.
+            \end{itemize}
+
+            \vspace{0.3em}
+            \textbf{Conclusion:}
+            Swendsen--Wang mixes well for this summary statistic, so the posterior marginal estimates are stable.
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\end{document}

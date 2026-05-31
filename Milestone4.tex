@@ -145,6 +145,32 @@ Second, vanilla GCN/GAT architectures primarily propagate node features, which m
 
 % \vspace{-0.7em}
 \section{Sensitivity Analysis}
+
+\subsection{Posterior Predictive Check}
+
+We analyze the homophily property before and after using MCMC by using our model to give a prediction of fraud/non-fraud to the training sample. Recall that homophily is the probabiliy that a node is fraud conditioned on one of their neighbor is fraud. We perform this for three different edge types. 
+
+    \begin{table}[ht]
+\centering
+\begin{tabular}{llrr}
+\toprule
+\textbf{Edge} & \textbf{Model} & \textbf{Observed} & \textbf{Predicted} \\
+\midrule
+net\_rur & non-MCMC & 0.996431 & 0.969053 \\
+net\_rsr & non-MCMC & 0.773120 & 0.773454 \\
+net\_rtr & non-MCMC & 0.758120 & 0.761143 \\
+net\_rur & MCMC & 0.996431 & 0.991085 \\
+net\_rsr & MCMC & 0.773120 & 0.801131 \\
+net\_rtr & MCMC & 0.758120 & 0.788649 \\
+\bottomrule
+\end{tabular}
+\caption{Posterior predictive checks for edge-level label agreement of non-MCMC model.}
+\label{tab:ppc_edge_checks}
+\end{table}
+
+
+We found that non-MCMC model generates predictions with weaker homophily for U-edges, while matching homophily on S and T-edges. The MCMC model overall predicts more fraud nodes for all three edge types, with matching homophily for U-edges. As we see in the next ablation study, user-level information is more important comparing to the other two types of information.
+
 \subsection{Edge-Type Ablation}
 We evaluated sensitivity to the modeling assumption that all three relations
 should be included. For each ablation we refit the model and evaluated on the
