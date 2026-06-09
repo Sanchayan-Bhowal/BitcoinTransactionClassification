@@ -17,8 +17,8 @@
 \newcommand{\T}{\mathcal T}
 \newcommand{\Pbb}{\mathbb P}
 
-\title[FraudYelp]{Scam Police: Interpretable Graph-Based Fraud Detection}
-\subtitle{Modeling Yelp review fraud with a multi-relation Ising model}
+\title[FraudYelp]{Detecting Fraud Reviews with Dependence}
+\subtitle{An Ising approach}
 \author{Tian Bai \and Sanchayan Bhowal \and Nathan Nguyen}
 \date{}
 
@@ -30,37 +30,31 @@
 \end{frame}
 
 %------------------------------------------------------------
-\begin{frame}{The Problem}
-\begin{columns}[T]
-\begin{column}{0.50\textwidth}
-\textbf{Goal.} Predict fraudulent Yelp reviews using both:
+\begin{frame}{Data Description}
+\textbf{FraudYelpDataset.}
 \begin{itemize}
-    \item review-level covariates,
-    \item graph dependence between related reviews.
+    \item 46k reviews, 32 anonymized covariates.
+    \item Approximately $15\%$ fraud and $85\%$ legitimate reviews.
+    \item Three graphs describe how reviews are related.
 \end{itemize}
 
-\vspace{0.3em}
-\textbf{Dataset.}
-\begin{itemize}
-    \item 46k reviews.
-    \item 32 anonymized features.
-    \item Roughly $15\%$ fraud, $85\%$ legitimate.
-\end{itemize}
-\end{column}
-\begin{column}{0.48\textwidth}
-\textbf{Three relation graphs.}
-\begin{itemize}
-    \item \texttt{net\_rur}: same user.
-    \item \texttt{net\_rsr}: same product and star rating.
-    \item \texttt{net\_rtr}: same product and month.
-\end{itemize}
+\vspace{0.5em}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Graph & Meaning & Scale \\
+\midrule
+\texttt{net\_rur} & same user & 99k edges \\
+\texttt{net\_rsr} & same product and star rating & 6.8M edges \\
+\texttt{net\_rtr} & same product and month & 1.1M edges \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\vspace{0.4em}
-\begin{block}{Modeling question}
-Can we use the three networks directly, instead of hiding them inside graph embeddings?
+\vspace{0.6em}
+\begin{block}{Goal}
+Predict fraudulent Yelp reviews using both review-level covariates and graph dependence between related reviews.
 \end{block}
-\end{column}
-\end{columns}
 \end{frame}
 
 \begin{frame}{Graph Structure}
@@ -87,8 +81,8 @@ Relation & \# edges & $P(\text{same label}\mid\text{edge})$ & $P(\text{fraud}\mi
 \vspace{0.7em}
 \begin{columns}[T]
 \begin{column}{0.48\textwidth}
-\begin{block}{GNN/GAT approach}
-Learns network embeddings through message passing. Effective, but relation effects are harder to interpret.
+\begin{block}{GNN approach}
+Learns network embeddings. Effective, but relation effects are harder to interpret.
 \end{block}
 \end{column}
 \begin{column}{0.48\textwidth}
@@ -100,19 +94,47 @@ Put the three networks directly into the probabilistic model, with one learned d
 \end{frame}
 
 %------------------------------------------------------------
-\begin{frame}{Model: weighted multi-relation Ising model}
-Encode labels as spins:
-\[
-    \sigma_i=-1 \quad \text{fraud},\qquad \sigma_i=+1 \quad \text{legitimate}.
-\]
+\begin{frame}{Pairwise Markov Random Field Motivation}
+  Drop the conditional-independence assumption: let neighboring labels be \emph{dependent}.
 
-\vspace{-0.5em}
+  \vspace{0.5em}
+  For a single graph $G=(V,E)$, consider:
+  \[
+    \mathbb{P}(\sigma_1,\ldots,\sigma_n \mid X, G)
+    \propto
+    \prod_{(i,j)\in E} \psi_{X_i, X_j}(\sigma_i, \sigma_j),
+    \quad \sigma_i \in \{-1, +1\}
+  \]
+
+  \vspace{0.3em}
+  Any symmetric log-potential factors as:
+  \[
+    \log \psi_{ij}(\sigma_i,\sigma_j)
+    = \underbrace{\beta_{ij}\,\sigma_i\sigma_j}_{\text{edge weights}} + \underbrace{\alpha_{ij}(\sigma_i+\sigma_j)}_{\text{node weights}} + c_{ij}
+  \]
+
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \begin{block}{$\beta_{ij} > 0$}
+        Adjacent labels prefer to \textbf{agree} (homophily)
+      \end{block}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{block}{$\beta_{ij} < 0$}
+        Adjacent labels prefer to \textbf{disagree} (heterophily)
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Model: weighted multi-relation Ising model}
+
 \begin{block}{Joint model}
 \[
 \Pbb_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
 \propto
 \exp\left\{
-\sum_{r=1}^3 \beta_r \sum_{i,j}J_{ij}^{(r)}\sigma_i\sigma_j
+\sum_{r=1}^3 \beta_r \sum_{(i,j) \in E_r}J_{ij}^{(r)}\sigma_i\sigma_j
 +2\sum_i \sigma_i b_\theta(X_i)
 \right\}.
 \]
@@ -146,11 +168,28 @@ Unlike a black-box graph embedding, $\beta_{\texttt{rur}}$, $\beta_{\texttt{rsr}
 We sample full label configurations using the \textbf{Swendsen-Wang algorithm}, which is substantially faster than single-site updates.
 \end{frame}
 
+\begin{frame}{Network Importance}
+    \begin{table}[ht]
+\centering
+\begin{tabular}{lrrr}
+\hline
+Model & $\hat{\beta}_{\text{net\_rur}}$ & $\hat{\beta}_{\text{net\_rsr}}$ & $\hat{\beta}_{\text{net\_rtr}}$ \\
+\hline
+Weighted Ising nn     & 0.690497 & 0.395863 & 0.246958 \\
+Weighted Ising linear & 2.167001 & 1.344325 & 0.465694 \\
+Ising neural      & 0.201291 & 0.003266 & 0.006731 \\
+Ising linear      & 2.668794 & 1.315111 & 0.231286 \\
+\hline
+\end{tabular}
+\caption{Estimated $\hat{\beta}$ values by notebook and edge type.}
+\end{table}
+\end{frame}
+
 %------------------------------------------------------------
 \begin{frame}{Model Comparison: F1 and Metrics}
     \begin{figure}
             \centering
-            \includegraphics[width=0.9\textwidth]{figures/fraud_yelp/f1_comp.png}
+            \includegraphics[width=0.72\textwidth]{figures/fraud_yelp/top_models_by_f1.png}
             \caption{F1-score comparison.}
     \end{figure}
 \end{frame}
@@ -158,7 +197,7 @@ We sample full label configurations using the \textbf{Swendsen-Wang algorithm}, 
 \begin{frame}{Model Comparison: F1 and Metrics}
     \begin{figure}
             \centering
-            \includegraphics[width=0.9\textwidth]{figures/fraud_yelp/accuracy_comp.png}
+            \includegraphics[width=0.72\textwidth]{figures/fraud_yelp/top_models_by_balanced_accuracy.png}
             \caption{Balanced Accuracy comparison.}
     \end{figure}
 \end{frame}
@@ -196,7 +235,7 @@ Ablation & Edges used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
 
     \begin{figure}
         \centering
-        \includegraphics[width=0.95\textwidth]{figures/fraud_yelp/var_.png}
+        \includegraphics[width=0.95\textwidth]{figures/fraud_yelp/var_comp_without_gm.png}
         \caption{Distribution of MCMC marginal variances $\widehat{p}_i(1-\widehat{p}_i)$ over non-training nodes.}
     \end{figure}
 \end{frame}
@@ -212,30 +251,30 @@ Ablation & Edges used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
     \end{block}
 \end{frame}
 
-\begin{frame}{Where is the Uncertainty?}
-    \begin{columns}[T]
-        \begin{column}{0.49\textwidth}
-            \centering
-            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_linear_net_rur_component_marginal_variance.png}
+% \begin{frame}{Where is the Uncertainty?}
+%     \begin{columns}[T]
+%         \begin{column}{0.49\textwidth}
+%             \centering
+%             \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_linear_net_rur_component_marginal_variance.png}
 
-            \scriptsize HM weighted linear
-        \end{column}
-        \begin{column}{0.49\textwidth}
-            \centering
-            \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_nn_net_rur_component_marginal_variance.png}
+%             \scriptsize HM weighted linear
+%         \end{column}
+%         \begin{column}{0.49\textwidth}
+%             \centering
+%             \includegraphics[width=\linewidth]{figures/fraud_yelp/hm_weighted_nn_net_rur_component_marginal_variance.png}
 
-            \scriptsize HM weighted neural
-        \end{column}
-    \end{columns}
+%             \scriptsize HM weighted neural
+%         \end{column}
+%     \end{columns}
 
-    \vspace{0.35em}
-    \small
-    Both plots show the same 47-node \texttt{net\_rur} component, colored by
-    $\widehat p_i(1-\widehat p_i)$. Most nodes have near-zero posterior variance,
-    consistent with strong within-user homophily. The neural model leaves a small
-    number of nodes more uncertain. Note that the two color bars use different
-    scales, so the comparison should be read qualitatively.
-\end{frame}
+%     \vspace{0.35em}
+%     \small
+%     Both plots show the same 47-node \texttt{net\_rur} component, colored by
+%     $\widehat p_i(1-\widehat p_i)$. Most nodes have near-zero posterior variance,
+%     consistent with strong within-user homophily. The neural model leaves a small
+%     number of nodes more uncertain. Note that the two color bars use different
+%     scales, so the comparison should be read qualitatively.
+% \end{frame}
 
 %------------------------------------------------------------
 \begin{frame}{Takeaways}
@@ -251,9 +290,8 @@ Ablation & Edges used & F1 & ROC-AUC & Avg. precision & TP/FN/FP/TN \\
 \begin{column}{0.47\textwidth}
 \textbf{Results.}
 \begin{itemize}
-    \item Swendsen-Wang marginals improve weighted models.
-    \item \texttt{net\_rur} is the most important network.
     \item The model is faster and more interpretable than GCN/GAT baselines while improving F1.
+    \item \texttt{net\_rur} is the most important network.
 \end{itemize}
 \end{column}
 \end{columns}

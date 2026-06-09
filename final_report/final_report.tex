@@ -1,0 +1,368 @@
+\documentclass[twoside]{article}
+
+\usepackage[preprint]{aistats2026}
+\usepackage{amsmath,amssymb,amsfonts,bbm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{hyphenat}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\setlist[itemize]{leftmargin=1.3em, topsep=0.25em, itemsep=0.1em}
+\captionsetup{font=small, labelfont=bf}
+
+\newcommand{\Pbb}{\mathbb P}
+\newcommand{\Ebb}{\mathbb E}
+\newcommand{\R}{\mathbb R}
+\newcommand{\Tcal}{\mathcal T}
+\newcommand{\ind}{\mathbbm 1}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\netrur}{\texttt{net\_rur}}
+\newcommand{\netrsr}{\texttt{net\_rsr}}
+\newcommand{\netrtr}{\texttt{net\_rtr}}
+
+\begin{document}
+
+\runningtitle{Detecting Fraud Reviews with Dependence}
+\runningauthor{Bai, Bhowal, Nguyen}
+
+\twocolumn[
+\aistatstitle{Detecting Fraud Reviews with Dependence: An Ising Approach}
+
+\aistatsauthor{Tian Bai \And Sanchayan Bhowal \And Nathan Nguyen}
+
+\aistatsaddress{Stanford University \And Stanford University \And Stanford University}
+]
+
+\begin{abstract}
+Fraud detection on review platforms is naturally a graph problem: suspicious reviews are not only characterized by their text or metadata, but also by how they are related through users, products, ratings, and time. We study the FraudYelpDataset, where nodes are reviews, node covariates describe review-level information, and three relation graphs encode same-user, same-product/same-rating, and same-product/same-month connections. We propose an interpretable graph-based approach for detecting fraudulent Yelp reviews. Instead of first compressing the graph into learned embeddings, as in graph neural network methods, we directly model label dependence across these networks using an Ising model. The covariates are used to learn fraud tendencies per node, while the graph structure captures how labels of related reviews influence one another. We fit the model using a pseudo-likelihood method. The parameter estimates are then used to sample from the model, which further provides an estimate of the marginal fraud probability under the joint model. We also conduct ablation studies to evaluate the importance of each network relation. Compared with standard graph learning baselines such as GCN and GAT, our approach is faster, more interpretable, and achieves stronger F1 performance.
+
+\end{abstract}
+
+\section{Introduction}
+
+Online review fraud is difficult to detect using review-level information alone. Fraudulent reviews may appear plausible in isolation, but their relationships to other reviews can reveal suspicious structure. For example, multiple reviews written by the same user may have correlated labels; reviews for the same product with the same rating may share coordinated behavior; and bursts of reviews in the same month may indicate temporal patterns. This motivates a model that uses both node covariates and graph dependence.
+
+We analyze \emph{FraudYelpDataset}. Nodes are Yelp reviews. Each node has 32 anonymized covariates and a binary label indicating whether the review is fraudulent or legitimate. The data are imbalanced, with approximately 15\% fraudulent reviews and 85\% legitimate reviews. In addition to covariates, the dataset contains three relation-specific graphs: \netrur{} connects reviews written by the same user, \netrsr{} connects reviews for the same product and same star rating, and \netrtr{} connects reviews for the same product and same month.
+
+The relation graphs have very different empirical homophily patterns, as shown in Table~\ref{tab:homophily}. The same-user relation \netrur{} is sharply assortative: connected reviews almost always share the same label, and a fraud review with a fraud neighbor is common. By contrast, \netrsr{} and \netrtr{} are only mildly homophilous. This asymmetry is the main motivation for assigning separate dependence parameters to the three relations rather than using a single aggregate graph.
+
+\begin{table}[t]
+\centering
+\caption{Edge-level homophily by relation. The same-user relation \netrur{} is much more assortative than the other two graphs.}
+\label{tab:homophily}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lrrr}
+\toprule
+Relation & Num. edges & $P(\text{same label}\mid\text{edge})$ & $P(\text{fraud}\mid\text{fraud neighbor})$ \\
+\midrule
+\netrsr & 6{,}805{,}486 & 0.7722 & 0.1857 \\
+\netrtr & 1{,}147{,}232 & 0.7593 & 0.1764 \\
+\netrur & 98{,}630 & 0.9964 & 0.9089 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Graph neural network methods such as GCN and GAT address this kind of problem by learning graph embeddings through message passing. These approaches can be effective, but the resulting representations are less transparent: it is harder to isolate which relation graph drives performance. Our approach is to put the three networks directly into the probabilistic model. This gives two benefits. First, the model can exploit graph dependence for prediction. Second, the relation-specific parameters and ablations directly quantify the importance of each network.
+
+\section{Data Description and EDA}
+
+\section{A Weighted Multi-Relation Ising Model}
+
+We encode the review label as a spin variable $\sigma_i\in\{-1,+1\}$ with $\sigma_i=-1$ for fraud, and $\sigma_i=+1$  for legitimate.
+Let $X_i\in\R^d$ be the covariate vector for node $i$, and let $E_1,E_2,E_3$ denote the edge sets of \netrur, \netrsr, and \netrtr. The model combines a covariate-driven external field with graph-driven pairwise interactions.
+
+\subsection{Motivation From pairwise Markov random fields}
+
+For a single graph $G=(V,E)$, a pairwise Markov random field has the form
+\[
+    \Pbb(\sigma\mid X,G) \propto \prod_{(i,j)\in E} \psi_{X_i,X_j}(\sigma_i,\sigma_j).
+\]
+For binary spins, any symmetric pairwise log-potential can be decomposed as
+\[
+    \log \psi_{ij}(\sigma_i,\sigma_j)
+    = \beta_{ij}\sigma_i\sigma_j + \alpha_{ij}(\sigma_i+\sigma_j)+c_{ij}.
+\]
+Hence, the final model can be written as,
+\begin{equation*}
+    \Pbb(\sigma\mid X,G) \propto \exp\left(\sum_{i,j}\beta_{ij}\sigma_i\sigma_j + \sum_{i=1}^n\left(\sum_{j=1}^n\alpha_{ij}\right)\sigma_i\right)
+\end{equation*}
+The term $\beta_{ij}\sigma_i\sigma_j$ captures label dependence along an edge: positive $\beta_{ij}$ encourages adjacent labels to agree, whereas negative $\beta_{ij}$ encourages disagreement. The linear terms contribute to node-level external fields. This representation motivates an Ising-type model with relation-specific couplings and covariate-dependent external fields.
+
+\subsection{Edge weights and degree normalization}
+We now specify the proposed model, in particular the exact form of $\beta_{ij}$. Since there are three different graphs, we assign each graph a corresponding parameter, $\beta_{\mathrm{rur}},\beta_{\mathrm{rsr}},\beta_{\mathrm{rtr}}$. Note that even within the same graph, not all edges should have equal influence. We therefore define feature-similarity weights
+\[
+    w_{ij}^{(r)} = \exp\left(-\frac{\|X_i-X_j\|_2^2}{2\tau_r^2}\right),\qquad (i,j)\in E_r,
+\]
+where $\tau_r$ is a relation-specific bandwidth. Let
+\[
+    D_i^{(r)} = \sum_k A_{ik}^{(r)}w_{ik}^{(r)}
+\]
+be the weighted degree. To prevent high-degree nodes from dominating, we use the degree-normalized interaction
+\[
+    J_{ij}^{(r)} = A_{ij}^{(r)}w_{ij}^{(r)}
+    \left(\frac{1}{D_i^{(r)}}+\frac{1}{D_j^{(r)}}\right).
+\]
+Once, the weights are in place, we define,
+$$\beta_{ij}=\sum_{r=1}^3 \beta_r J_{ij}^{(r)}.$$
+The node weights are modeled as function of covariates, i.e.
+$$\sum_j \alpha_{ij}=b_\theta(X_i)$$.
+The final weighted multi-relation Ising model is
+\begin{equation}
+\label{eq:model}
+\Pbb_{\beta,\theta}(\sigma\mid X,G_1,G_2,G_3)
+    \propto \exp\{\mathcal H_{\beta,\theta}(\sigma)\},
+\end{equation}
+where,
+\begin{equation*}
+    \mathcal H_{\beta,\theta}(\sigma)= \sum_{r=1}^3 \beta_r\sum_{i,j}J_{ij}^{(r)}\sigma_i\sigma_j
+    + 2\sum_i \sigma_i b_\theta(X_i).
+\end{equation*}
+Here $b_\theta(X_i)$ is some function of the covariates. For experiments we will stick to either a linear function $X_i^\top\theta$ or as a neural network. The parameter $\beta_r$ measures the strength of label dependence in relation $r$. Thus $\widehat\beta_{\mathrm{rur}},\widehat\beta_{\mathrm{rsr}},\widehat\beta_{\mathrm{rtr}}$ estimate the importance of the relation graphs after controlling for covariates. The $\tau_r$ is treated as a hyperparameter, the higher the $\tau_r$ it is more close to the unweighted model.
+
+\section{Estimation and Posterior Prediction}
+
+\subsection{Pseudo-likelihood training}
+
+The data is split into training(70\%), validation(10\%) and test(20\%). We want to understand the probability distribution. The only unknown quantities are $\beta$ and $\theta$. The classical method is to consider the maximum likelihood estimator. However, the likelihood of~\eqref{eq:model} contains an intractable partition function summing over $2^n$ spin configurations. We therefore use pseudo-maximum likelihood. Let $\Tcal$ be the training set. For $i\in\Tcal$, define the local field
+\begin{equation}
+\label{eq:local-field}
+    h_i = \sum_{r=1}^{3}\beta_r\sum_{j\in\Tcal}J_{ij}^{(r)}\sigma_j
+    +2b_\theta(X_i).
+\end{equation}
+Then the node-wise conditional distribution is
+\[
+    \Pbb_{\beta,\theta}(\sigma_i=s\mid \sigma_{\Tcal\setminus\{i\}},X,G)
+    =\frac{\exp(sh_i)}{2\cosh h_i},\qquad s\in\{-1,+1\}.
+\]
+This gives the negative pseudo-log-likelihood
+\begin{equation}
+\label{eq:pseudolikelihood}
+    \mathcal L(\beta,\theta)
+    =\frac{1}{|\Tcal|}\sum_{i\in\Tcal}\left[\log(2\cosh h_i)-\sigma_i h_i\right].
+\end{equation}
+We minimize~\eqref{eq:pseudolikelihood} jointly over $\beta$ and $\theta$ using AdamW and backpropagation. We track validation F1 and AUPRC during training and tune the final classification threshold on the validation set.
+
+\subsection{Posterior fraud marginals by Swendsen--Wang sampling}
+
+The special case $\beta_{\mathrm{rur}}=\beta_{\mathrm{rsr}}=\beta_{\mathrm{rtr}}=0$ reduces to standard logistic regression. In that case, estimating $\theta$ is sufficient to compute the marginal fraud probabilities. For our joint Ising model, however, the interaction terms induce dependence among labels, and there is no closed-form expression for the marginal probabilities. Exact marginalization would require summing over all $2^n$ label configurations, which is computationally infeasible. We therefore estimate the marginal probabilities by sampling from the fitted joint distribution.
+
+The fitted pseudo-likelihood provides local conditional scores, but the prediction target under the joint model is the posterior marginal probability that each node is fraudulent. After estimating $(\widehat\beta,\widehat\theta)$, we sample full label configurations $\sigma^{(1)},\ldots,\sigma^{(M)}\in{-1,+1}^n$
+from the fitted Ising model using the Swendsen--Wang algorithm \ref{algo}. This algorithm is applicable here because the coefficients of the interaction terms $\sigma_i\sigma_j$ are positive. Compared with single-site updates, Swendsen--Wang cluster updates can mix substantially faster for graph-structured Ising posteriors.
+
+For each node, we estimate the posterior fraud marginal by
+\begin{equation}
+\label{eq:marginal}
+\widehat p_i
+= \frac{1}{M}\sum_{m=1}^{M}\ind{\sigma_i^{(m)}=-1}.
+\end{equation}
+Predictions are obtained by thresholding $\widehat p_i$, with the threshold selected using validation F1. We also use the MCMC samples to quantify posterior uncertainty through the Bernoulli variance
+\begin{equation}
+\label{eq:variance}
+\widehat p_i(1-\widehat p_i),
+\end{equation}
+which is largest near the decision boundary $\widehat p_i=1/2$ and small when the posterior marginal is close to either 0 or 1.
+
+
+\section{Experiments}
+
+\subsection{Baselines and metrics}
+
+We compare the proposed Ising models with a range of non-graph and graph baselines, including logistic regression variants, MLP, graph label propagation, neighbor vote, GCN, GAT, and residual GNN variants. Because the fraud class is rare, we emphasize F1-score, average precision, balanced accuracy, precision, and recall rather than raw accuracy. Reported threshold-dependent metrics use thresholds selected on the validation set.
+
+%add baseline description here
+
+
+\subsection{Estimated network effects}
+
+Table~\ref{tab:betahat} reports estimated relation-specific dependence parameters. Across model variants, \netrur{} receives the largest or one of the largest coefficients. This matches the homophily analysis in Table~\ref{tab:homophily}: same-user edges carry the strongest label dependence. The weighted neural model has positive dependence across all three relations, but the same-user relation remains strongest.
+
+\begin{table}[t]
+\centering
+\caption{Estimated relation-specific dependence coefficients. Larger positive values indicate stronger assortative label dependence after controlling for covariates.}
+\label{tab:betahat}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lrrr}
+\toprule
+Model & $\widehat\beta_{\mathrm{rur}}$ & $\widehat\beta_{\mathrm{rsr}}$ & $\widehat\beta_{\mathrm{rtr}}$ \\
+\midrule
+Weighted Ising neural & 0.690497 & 0.395863 & 0.246958 \\
+Weighted Ising linear & 2.167001 & 1.344325 & 0.465694 \\
+Ising neural & 0.201291 & 0.003266 & 0.006731 \\
+Ising linear & 2.668794 & 1.315111 & 0.231286 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/fraud_yelp/top_models_by_f1.png}
+    \caption{Test F1 at the validation-selected threshold.}
+    \label{fig:f1}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/fraud_yelp/top_models_by_balanced_accuracy.png}
+    \caption{Balanced accuracy at the validation-selected threshold.}
+    \label{fig:balacc}
+\end{subfigure}
+\caption{Comparison with non-graph and graph-learning baselines. The weighted Ising neural model is the strongest model by F1 among the tested methods and performs competitively under balanced accuracy. Standard GCN/GAT baselines are substantially lower in this comparison.}
+\label{fig:comparison}
+\end{figure*}
+
+\subsection{Comparison with baseline methods}
+
+Figure~\ref{fig:comparison} compares the proposed method with standard baselines. The weighted Ising neural model obtains the best F1 among the tested models. The weighted Ising linear model is also competitive, suggesting that much of the predictive gain comes from directly modeling graph dependence rather than only from using a flexible external field. In contrast, the GCN and GAT baselines are considerably lower in F1. This is consistent with the main modeling motivation: embedding-based graph learning can be predictive, but it does not directly exploit the strong relation-specific label dependence in as transparent a way.
+
+\subsection{Ablation study: which graph matters?}
+
+To test sensitivity to edge-type choice, we refit the HM weighted neural model using different subsets of the three relation graphs. Table~\ref{tab:ablation} reports test results using the validation-F1 threshold strategy. The full model is best by F1 and average precision, but the \netrur-only model retains most of the performance. In contrast, removing \netrur{} causes a large drop. This confirms that \netrur{} is the essential network relation, while \netrsr{} and \netrtr{} provide smaller incremental gains.
+
+\begin{table*}[t]
+\centering
+\caption{Edge-type ablation results. The full model is best, but \netrur{} alone retains most of the performance. Removing \netrur{} causes a large drop.}
+\label{tab:ablation}
+\begin{tabular}{llrrrrrrrr}
+\toprule
+Ablation & Edges used & F1 & ROC-AUC & Avg. precision & TP & FN & FP & TN \\
+\midrule
+\texttt{all\_3\_edges} & rur, rsr, rtr & 0.695562 & 0.930746 & 0.766819 & 856 & 444 & 305 & 7587 \\
+\texttt{no\_net\_rsr} & rur, rtr & 0.691794 & 0.927995 & 0.754971 & 881 & 419 & 366 & 7526 \\
+\texttt{no\_net\_rtr} & rur, rsr & 0.688172 & 0.929968 & 0.762140 & 832 & 468 & 286 & 7606 \\
+\texttt{only\_net\_rur} & rur & 0.682306 & 0.925771 & 0.749799 & 858 & 442 & 357 & 7535 \\
+\texttt{only\_net\_rsr} & rsr & 0.619048 & 0.891669 & 0.672229 & 780 & 520 & 440 & 7452 \\
+\texttt{no\_net\_rur} & rsr, rtr & 0.615948 & 0.892047 & 0.677019 & 757 & 543 & 401 & 7491 \\
+\texttt{only\_net\_rtr} & rtr & 0.601473 & 0.887858 & 0.660800 & 735 & 565 & 409 & 7483 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+The difference between the full model and \netrur{} alone is modest: F1 decreases from 0.695562 to 0.682306. By contrast, removing \netrur{} lowers F1 to 0.615948. Thus, the same-user graph is the main carrier of predictive network signal. The other two graphs are not useless: adding either to \netrur{} improves both posterior decisiveness and predictive performance relative to some one-relation baselines, but their incremental effect is smaller.
+
+\section{Uncertainty quantification}
+
+The MCMC prediction step gives not only point predictions but also posterior uncertainty. For each node, the variance~\eqref{eq:variance} measures how close the marginal fraud probability is to the decision boundary. This is a useful diagnostic: high uncertainty identifies reviews for which the fitted model cannot confidently decide fraud versus legitimate.
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/fraud_yelp/var_comp_without_gm.png}
+    \caption{Distribution of $\widehat p_i(1-\widehat p_i)$ over non-training nodes.}
+    \label{fig:variance-all}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/fraud_yelp/varHmNnAblationMcmc.png}
+    \caption{Posterior variance under edge ablations for the HM weighted neural model.}
+    \label{fig:variance-ablation}
+\end{subfigure}
+\caption{Posterior marginal uncertainty from Swendsen--Wang samples. Lower variance indicates more decisive posterior marginals, but it is interpreted together with F1 and average precision rather than as a standalone criterion.}
+\label{fig:uncertainty}
+\end{figure*}
+
+Figure~\ref{fig:variance-all} compares posterior uncertainty across model variants. The weighted and unweighted variants produce many highly decisive marginals, while neural external fields leave a somewhat larger tail of uncertain nodes. This is expected: the neural field can represent more heterogeneous covariate effects and can leave more nodes near the decision boundary. Figure~\ref{fig:variance-ablation} shows that \netrur{} alone has higher uncertainty than combinations of \netrur{} with a secondary graph. This does not contradict the ablation results: \netrur{} is dominant for prediction, while \netrsr{} and \netrtr{} can add aligned signal that makes some posterior marginals more decisive.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fraud_yelp/locFieldvsVar_hmnn.png}
+\caption{Absolute fitted local field versus posterior uncertainty. High uncertainty is concentrated near small absolute local fields, consistent with the interpretation that nodes with weak fitted local evidence lie near the decision boundary.}
+\label{fig:local-field}
+\end{figure}
+
+The local field provides a complementary diagnostic. Conditional on the current neighbors, the fraud probability has the form $\operatorname{logit}^{-1}(-2H_i)$. Hence large $|H_i|$ pushes the conditional probability toward 0 or 1, whereas small $|H_i|$ leaves the node uncertain. Figure~\ref{fig:local-field} shows this expected pattern: high posterior uncertainty occurs primarily when the fitted local field is small.
+
+\section{Discussion}
+
+The results support three conclusions. First, directly modeling label dependence is useful for this problem. The weighted Ising neural model outperforms the GCN/GAT baselines in F1 in our experiments while retaining an interpretable probabilistic structure. Second, relation-specific parameters and ablations consistently identify \netrur{} as the dominant graph relation. This is aligned with the raw homophily statistics and provides a clear explanation of where the network signal comes from. Third, MCMC posterior marginals give a more coherent prediction target under the fitted joint model than local conditional scores alone, and they provide uncertainty estimates for individual reviews.
+
+There are also limitations. Pseudo-likelihood is computationally convenient but does not optimize the full likelihood. The Swendsen--Wang sampler improves posterior sampling speed, but MCMC diagnostics remain necessary. Also, with the train test split we can only estimate the probabilities of $P(\sigma_{\text{test}}\mid \sigma_{\text{train}})$. Since there is a tremendous distribution shift, it is much harder to learn $P(\sigma_{\text{test}})$.
+
+\section{Conclusion}
+
+We introduced a weighted multi-relation Ising model for fraud detection on Yelp reviews. The model uses covariates to learn review-level fraud tendencies and uses three relation graphs to model label dependence directly. Parameters are fitted by pseudo-likelihood, and posterior fraud marginals are estimated by Swendsen--Wang MCMC sampling. Empirically, the method gives strong F1 performance relative to graph neural network baselines, while also providing interpretable estimates of network importance. The main empirical finding is that the same-user graph \netrur{} is essential: it explains most of the network signal, while the product/rating and product/time graphs contribute smaller but useful additional information.
+
+\begin{thebibliography}{9}
+\bibitem{brown2018car}
+Andrew Brown, Gauri Datta, and Nicole Lazar. Bayesian generalized conditional autoregressive models for correlated signal detection. \emph{Statistica Sinica}, 2018.
+
+\bibitem{daskalakis2020logistic}
+Constantinos Daskalakis, Nishanth Dikkala, and Ioannis Panageas. Logistic regression with peer-group effects via inference in higher-order Ising models. In \emph{Proceedings of the 23rd International Conference on Artificial Intelligence and Statistics}, 2020.
+
+\bibitem{mukherjee2024network}
+Somabha Mukherjee, Ziang Niu, Sagnik Halder, Bhaswar B. Bhattacharya, and George Michailidis. Logistic regression under network dependence. \emph{Journal of Machine Learning Research}, 25(411):1--62, 2024.
+\end{thebibliography}
+
+\appendix
+\section{Additional MCMC diagnostic}
+
+In addition to marginal uncertainty diagnostics, we examined MCMC mixing using the positive fraction among free nodes across independent chains. The traces overlap, running means stabilize, autocorrelations decay quickly, and $\widehat R\approx 1$ for this summary statistic, supporting the stability of the posterior marginal estimates.
+
+\begin{figure*}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/fraud_yelp/mcmc_mixing.png}
+\caption{Swendsen--Wang MCMC mixing diagnostics based on the positive fraction among free nodes.}
+\label{fig:mcmc-mixing}
+\end{figure*}
+
+\section{Swendsen Wang Algorithm}
+\begin{algorithm}[H]
+\caption{Swendsen--Wang algorithm for the Ising model with external field}
+\label{algo}
+\begin{algorithmic}[1]
+\Require Coupling matrix $(J_{ij})_{1 \leq i,j \leq n}$ with $J_{ij}\geq 0$, external field $(h_i)_{i=1}^n$, inverse temperature $\beta>0$, number of sweeps $T$, initial configuration $\sigma \in \{-1,+1\}^n$.
+\Ensure A sample $\sigma \in \{-1,+1\}^n$.
+
+\For{$t=1,\dots,T$}
+
+    \State Initialize an empty graph $G_t$ on vertex set $\{1,\dots,n\}$.
+
+    \For{each pair $1\leq i<j\leq n$ with $J_{ij}>0$}
+        \If{$\sigma_i=\sigma_j$}
+            \State Add the edge $(i,j)$ to $G_t$ independently with probability
+            \[
+                p_{ij}=1-\exp(-2\beta J_{ij}).
+            \]
+        \Else
+            \State Do not add the edge $(i,j)$.
+        \EndIf
+    \EndFor
+
+    \State Let $C_1,\dots,C_K$ be the connected components of $G_t$.
+
+    \For{$k=1,\dots,K$}
+        \State Compute the total field on the cluster
+        \[
+            H_k=\sum_{i\in C_k} h_i.
+        \]
+        \State Sample $\eta_k\in\{-1,+1\}$ according to
+        \[
+            \mathbb{P}(\eta_k=+1)
+            =
+            \frac{\exp(H_k)}
+            {\exp(H_k)+\exp(-H_k)}
+            =
+            \frac{1}{1+\exp(-2H_k)}.
+        \]
+        \State For every $i\in C_k$, set $\sigma_i \gets \eta_k$.
+    \EndFor
+
+\EndFor
+
+\State \Return $\sigma$.
+\end{algorithmic}
+\end{algorithm}
+\end{document}
